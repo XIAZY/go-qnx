@@ -54,7 +54,10 @@ func Supported() error {
 	case runtime.GOARCH == "wasm",
 		runtime.GOOS == "windows" && runtime.GOARCH == "386",
 		runtime.GOOS == "openbsd", // due to -fexecute-only, see #70880
-		runtime.GOOS == "aix":
+		runtime.GOOS == "aix",
+		// QNX 6.5's clocks advance once per system tick (1ms by
+		// default), too coarse for the CPU jitter entropy source.
+		runtime.GOOS == "qnx":
 		return errors.New("FIPS 140-3 mode is not supported on " + runtime.GOOS + "-" + runtime.GOARCH)
 	}
 
