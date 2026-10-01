@@ -178,6 +178,7 @@ func newosproc(mp *m) {
 func osinit() {
 	numCPUStartup = getCPUCount()
 	physPageSize = getPageSize()
+	qnxInitTSC()
 }
 
 var urandom_dev = []byte("/dev/urandom\x00")

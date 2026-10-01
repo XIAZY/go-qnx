@@ -6611,6 +6611,10 @@ func sysmon() {
 		// blocked on schedlock or sysmonlock above.
 		now = nanotime()
 
+		if GOOS == "qnx" {
+			qnxCheckTSC() // see tsc_qnx.go
+		}
+
 		// trigger libc interceptors if needed
 		if *cgo_yield != nil {
 			asmcgocall(*cgo_yield, nil)
