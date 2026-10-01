@@ -302,6 +302,9 @@ func TestCgoPanicDeadlock(t *testing.T) {
 
 func TestCgoCCodeSIGPROF(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "qnx" {
+		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
+	}
 	if runtime.GOOS == "freebsd" && race.Enabled {
 		t.Skipf("race + cgo freebsd not supported. See https://go.dev/issue/73788.")
 	}
@@ -313,6 +316,9 @@ func TestCgoCCodeSIGPROF(t *testing.T) {
 }
 
 func TestCgoPprofCallback(t *testing.T) {
+	if runtime.GOOS == "qnx" {
+		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
+	}
 	if testing.Short() {
 		t.Skip("skipping in short mode") // takes a full second
 	}
@@ -406,6 +412,9 @@ func TestCgoTracebackContextPreemption(t *testing.T) {
 
 func TestCgoTracebackContextProfile(t *testing.T) {
 	t.Parallel()
+	if runtime.GOOS == "qnx" {
+		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
+	}
 	if runtime.GOOS == "freebsd" && race.Enabled {
 		t.Skipf("race + cgo freebsd not supported. See https://go.dev/issue/73788.")
 	}
@@ -652,7 +661,7 @@ func TestWindowsStackMemoryCgo(t *testing.T) {
 
 func TestSigStackSwapping(t *testing.T) {
 	switch runtime.GOOS {
-	case "plan9", "windows":
+	case "plan9", "qnx", "windows":
 		t.Skipf("no sigaltstack on %s", runtime.GOOS)
 	}
 	if runtime.GOOS == "freebsd" && race.Enabled {
@@ -1001,7 +1010,7 @@ func TestEnsureBindM(t *testing.T) {
 func TestStackSwitchCallback(t *testing.T) {
 	t.Parallel()
 	switch runtime.GOOS {
-	case "windows", "plan9", "android", "ios", "openbsd": // no getcontext
+	case "windows", "plan9", "android", "ios", "openbsd", "qnx": // no getcontext
 		t.Skipf("skipping test on %s", runtime.GOOS)
 	}
 	if asan.Enabled {

@@ -14,6 +14,9 @@
 #include <errno.h>
 #include "libcgo.h"
 #include "libcgo_unix.h"
+#if defined(__QNX__)
+#include <sys/storage.h> // __tls
+#endif
 
 void
 _cgo_sys_thread_start(ThreadStart *ts)
@@ -42,6 +45,17 @@ _cgo_sys_thread_start(ThreadStart *ts)
 	// Solaris can report 0 stack size, fix it.
 	if (size == 0) {
 		size = 2 << 20;
+		if (pthread_attr_setstacksize(&attr, size) != 0) {
+			perror("runtime/cgo: pthread_attr_setstacksize failed");
+		}
+	}
+#endif
+
+#if defined(__QNX__)
+	// QNX reports 0, meaning its default of 128 KB. Use the size the
+	// runtime asks for when it creates threads without cgo.
+	if (size == 0) {
+		size = 256 << 10;
 		if (pthread_attr_setstacksize(&attr, size) != 0) {
 			perror("runtime/cgo: pthread_attr_setstacksize failed");
 		}
@@ -98,6 +112,14 @@ x_cgo_getstackbound(uintptr bounds[2])
 #elif defined(__illumos__)
 	pthread_attr_get_np(pthread_self(), &attr);
 	pthread_attr_getstack(&attr, &addr, &size); // low address
+#elif defined(__QNX__)
+	// QNX has no pthread_getattr_np, but every thread's control block
+	// records the lowest usable address of its stack, just above the
+	// guard page, and itself sits at the top of the stack. This holds
+	// for the main thread and for stacks allocated by libc or passed
+	// in with pthread_attr_setstack.
+	addr = __tls()->__stackaddr;
+	size = (uintptr)__tls() - (uintptr)addr;
 #else
 	// We don't know how to get the current stacks, leave it as
 	// 0 and the caller will use an estimate based on the current

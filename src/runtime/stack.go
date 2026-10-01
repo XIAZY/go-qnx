@@ -71,8 +71,13 @@ const (
 	// stackSystem is a number of additional bytes to add
 	// to each stack below the usual guard area for OS-specific
 	// purposes like signal handling. Used on Windows, Plan 9,
-	// and iOS because they do not use a separate stack.
-	stackSystem = goos.IsWindows*4096 + goos.IsPlan9*512 + goos.IsIos*goarch.IsArm64*1024
+	// iOS and QNX because they do not use a separate stack.
+	// On QNX a goroutine stack may hold two kernel signal frames
+	// (about 0x2b8 bytes each) and two entries into libc's
+	// __signalstub before sigtramp moves to the signal stack: an
+	// asynchronous signal, and the fault it delayed (see
+	// sigDelayedFault in os_qnx.go).
+	stackSystem = goos.IsWindows*4096 + goos.IsPlan9*512 + goos.IsIos*goarch.IsArm64*1024 + goos.IsQnx*2048
 
 	// The minimum size of stack used by Go code
 	stackMin = 2048
