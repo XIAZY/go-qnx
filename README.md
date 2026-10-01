@@ -51,6 +51,14 @@ cgo works when `CC` is a C compiler for i386 QNX 6.5 that supports
 with the QNX headers); the compilers of the QNX 6.5 SDP do not, so set
 `CGO_ENABLED=0` when building on QNX.
 
+On QNX 6.5, removing the name of a Unix socket that is already closed
+can hang the network stack until a reboot; removing the name of an open
+socket is safe. Package net removes the names of the sockets it binds
+before closing them. If you keep a socket's name past Close (a listener
+from FileListener or with SetUnlinkOnClose(false), a socket bound with
+syscall.Bind, or one made by another program), remove the name before
+closing the socket, never after.
+
 ### Contributing
 
 Go is the work of thousands of contributors. We appreciate your help!

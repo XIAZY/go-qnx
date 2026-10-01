@@ -23,11 +23,17 @@ import (
 // reads as well, never wedged io-pkt. The poller's poll(2) is left out for
 // the same reason.
 //
-// os.Remove (and so os.RemoveAll) of a socket name goes through
-// UnlinkSocket too. Not covered: other processes; os.Root's Remove of a
-// socket name; sockets used through os.File, whose FDs are files to this
+// os.Remove (and so os.RemoveAll, and os.Root's Remove and RemoveAll) of
+// a socket name goes through UnlinkSocket too. Not covered: other
+// processes; sockets used through os.File, whose FDs are files to this
 // package; calls made by C code, including the cgo resolver; and a
 // RawConn's Control, Read and Write functions.
+//
+// A second hazard is separate from the lock: removing the name of a
+// socket that is already closed can hang io-pkt the same way, from any
+// process, while removing the name of an open socket is safe. So package
+// net removes the name of every socket it binds before closing it
+// (UnixListener, and UnixConn in net's unixsock_qnx.go).
 //
 // Only the system call itself is covered, never a wait for readiness in
 // the poller: a non-blocking socket call returns at once, so an unlink
