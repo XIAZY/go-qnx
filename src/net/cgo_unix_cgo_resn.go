@@ -18,14 +18,24 @@ package net
 #include <arpa/nameser.h>
 #include <resolv.h>
 
-#cgo !aix,!dragonfly,!freebsd LDFLAGS: -lresolv
+#cgo !aix,!dragonfly,!freebsd,!qnx LDFLAGS: -lresolv
 */
 import "C"
+
+import "errors"
 
 type _C_struct___res_state = C.struct___res_state
 
 func _C_res_ninit(state *_C_struct___res_state) error {
-	_, err := C.res_ninit(state)
+	// res_ninit reports failure by returning -1; errno is only
+	// meaningful then. QNX's leaves a stale errno (ESRCH) on success.
+	r, err := C.res_ninit(state)
+	if r == 0 {
+		return nil
+	}
+	if err == nil {
+		err = errors.New("res_ninit failed")
+	}
 	return err
 }
 
