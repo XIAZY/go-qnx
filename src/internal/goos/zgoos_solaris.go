@@ -20,6 +20,7 @@ const IsNacl = 0
 const IsNetbsd = 0
 const IsOpenbsd = 0
 const IsPlan9 = 0
+const IsQnx = 0
 const IsSolaris = 1
 const IsWasip1 = 0
 const IsWindows = 0
