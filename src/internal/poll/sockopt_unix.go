@@ -14,5 +14,7 @@ func (fd *FD) SetsockoptByte(level, name int, arg byte) error {
 		return err
 	}
 	defer fd.decref()
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.SetsockoptByte(fd.Sysfd, level, name, arg)
 }
