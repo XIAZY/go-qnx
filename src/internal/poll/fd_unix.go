@@ -79,7 +79,9 @@ func (fd *FD) destroy() error {
 	// so this must be executed before CloseFunc.
 	fd.pd.close()
 
+	fd.sockRLock()
 	err := fd.SysFile.destroy(fd.Sysfd)
+	fd.sockRUnlock()
 
 	fd.Sysfd = -1
 	runtime_Semrelease(&fd.csema)
@@ -127,6 +129,8 @@ func (fd *FD) SetBlocking() error {
 	// do not cause a race condition. isBlocking only ever goes
 	// from 0 to 1 so there is no real race here.
 	atomic.StoreUint32(&fd.isBlocking, 1)
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.SetNonblock(fd.Sysfd, false)
 }
 
@@ -606,7 +610,9 @@ func (fd *FD) Accept() (int, syscall.Sockaddr, string, error) {
 		return -1, nil, "", err
 	}
 	for {
+		fd.sockRLock()
 		s, rsa, errcall, err := accept(fd.Sysfd)
+		fd.sockRUnlock()
 		if err == nil {
 			return s, rsa, "", err
 		}
@@ -680,6 +686,10 @@ func (fd *FD) Dup() (int, string, error) {
 		return -1, "", err
 	}
 	defer fd.decref()
+	// On qnx, dup of a socket is a request to io-pkt, so it takes the
+	// socket lock (see socklock_qnx.go).
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return DupCloseOnExec(fd.Sysfd)
 }
 

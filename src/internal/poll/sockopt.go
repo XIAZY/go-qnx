@@ -14,6 +14,8 @@ func (fd *FD) SetsockoptInt(level, name, arg int) error {
 		return err
 	}
 	defer fd.decref()
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.SetsockoptInt(fd.Sysfd, level, name, arg)
 }
 
@@ -23,6 +25,8 @@ func (fd *FD) SetsockoptInet4Addr(level, name int, arg [4]byte) error {
 		return err
 	}
 	defer fd.decref()
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.SetsockoptInet4Addr(fd.Sysfd, level, name, arg)
 }
 
@@ -32,6 +36,8 @@ func (fd *FD) SetsockoptLinger(level, name int, l *syscall.Linger) error {
 		return err
 	}
 	defer fd.decref()
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.SetsockoptLinger(fd.Sysfd, level, name, l)
 }
 
@@ -41,5 +47,7 @@ func (fd *FD) GetsockoptInt(level, name int) (int, error) {
 		return -1, err
 	}
 	defer fd.decref()
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.GetsockoptInt(fd.Sysfd, level, name)
 }
