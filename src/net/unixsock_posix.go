@@ -9,6 +9,7 @@ package net
 import (
 	"context"
 	"errors"
+	"internal/poll"
 	"os"
 	"syscall"
 )
@@ -190,7 +191,7 @@ func (ln *UnixListener) close() error {
 	// Even if there are racy calls to Close, we want to unlink only for the first one.
 	ln.unlinkOnce.Do(func() {
 		if ln.path[0] != '@' && ln.unlink {
-			syscall.Unlink(ln.path)
+			poll.UnlinkSocket(ln.path)
 		}
 	})
 	return ln.fd.Close()

@@ -22,7 +22,7 @@ func dnsReadConfig(filename string) *dnsConfig {
 		timeout:  5 * time.Second,
 		attempts: 2,
 	}
-	file, err := open(filename)
+	file, src, err := openResolvConf(filename)
 	if err != nil {
 		conf.servers = defaultNS
 		conf.search = dnsDefaultSearch()
@@ -30,7 +30,10 @@ func dnsReadConfig(filename string) *dnsConfig {
 		return conf
 	}
 	defer file.close()
-	if fi, err := file.file.Stat(); err == nil {
+	conf.resolveConf = src
+	if file.file == nil {
+		// In-memory configuration (QNX): nothing to stat.
+	} else if fi, err := file.file.Stat(); err == nil {
 		conf.mtime = fi.ModTime()
 	} else {
 		conf.servers = defaultNS

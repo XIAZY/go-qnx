@@ -40,6 +40,10 @@ func testableNetwork(network string) bool {
 		switch runtime.GOOS {
 		case "aix", "android", "darwin", "ios", "plan9", "windows":
 			return false
+		case "qnx":
+			// QNX 6.5 has no SOCK_SEQPACKET for AF_UNIX:
+			// socket fails with EPROTOTYPE.
+			return false
 		}
 	}
 	switch net {

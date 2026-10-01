@@ -15,6 +15,8 @@ import (
 const _SO_TYPE = syscall.SO_TYPE
 
 func dupFileSocket(f *os.File) (int, error) {
+	poll.SockRLock()
+	defer poll.SockRUnlock()
 	s, call, err := poll.DupCloseOnExec(int(f.Fd()))
 	if err != nil {
 		if call != "" {
