@@ -147,6 +147,19 @@ func adddynrel(target *ld.Target, ldr *loader.Loader, syms *ld.ArchSyms, s loade
 
 		// Handle relocations found in ELF object files.
 	case objabi.ElfRelocOffset + objabi.RelocType(elf.R_386_PC32):
+		if targType == sym.SDYNIMPORT && target.IsQnx() && r.Off() >= 1 && (ldr.Data(s)[r.Off()-1] == 0xe8 || ldr.Data(s)[r.Off()-1] == 0xe9) {
+			// QNX's gcc 4.4, which built libgcc.a and most QNX
+			// object code, calls functions in shared libraries with
+			// R_386_PC32, not R_386_PLT32. Like the system linker,
+			// send such a CALL, or a JMP (a tail call), through the
+			// PLT.
+			su := ldr.MakeSymbolUpdater(s)
+			su.SetRelocType(rIdx, objabi.R_PCREL)
+			addpltsym(target, ldr, syms, targ)
+			su.SetRelocSym(rIdx, syms.PLT)
+			su.SetRelocAdd(rIdx, r.Add()+4+int64(ldr.SymPlt(targ)))
+			return true
+		}
 		if targType == sym.SDYNIMPORT {
 			ldr.Errorf(s, "unexpected R_386_PC32 relocation for dynamic symbol %s", ldr.SymName(targ))
 		}

@@ -853,8 +853,9 @@ func (ctxt *Link) linksetup() {
 
 	// The Android Q linker started to complain about underalignment of the our TLS
 	// section. We don't actually use the section on android, so don't
-	// generate it.
-	if buildcfg.GOOS != "android" {
+	// generate it. QNX 6.5 has no ELF TLS at all: g lives in the thread's
+	// control block, and its loader does not know PT_TLS.
+	if buildcfg.GOOS != "android" && buildcfg.GOOS != "qnx" {
 		tlsg := ctxt.loader.LookupOrCreateSym("runtime.tlsg", 0)
 		sb := ctxt.loader.MakeSymbolUpdater(tlsg)
 
