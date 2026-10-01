@@ -7,9 +7,12 @@
 // the way the linear memory works. FIPS 140-3 mode is not supported on Wasm, so
 // we just use a build tag to exclude it. (Could also exclude other platforms
 // that does not support FIPS 140-3 mode, but as the BSS variable doesn't cost
-// much, don't bother.)
+// much, don't bother.) QNX is excluded too: it does not support FIPS 140-3
+// mode, and it commits memory for the whole BSS section when a program is
+// loaded, so the buffer would cost every program that links this package
+// 32 MiB of RAM.
 //
-//go:build !wasm
+//go:build !wasm && !qnx
 
 package drbg
 

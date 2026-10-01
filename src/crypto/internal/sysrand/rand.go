@@ -53,7 +53,7 @@ func Read(b []byte) {
 	}
 }
 
-// The urandom fallback is only used on Linux kernels before 3.17 and on AIX.
+// The urandom fallback is only used on Linux kernels before 3.17, AIX and QNX.
 
 var urandomOnce sync.Once
 var urandomFile *os.File
