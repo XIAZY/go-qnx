@@ -44,6 +44,7 @@ type dnsConfig struct {
 	lookup        []string      // OpenBSD top-level database "lookup" order
 	err           error         // any error that occurs during open of resolv.conf
 	mtime         time.Time     // time of resolv.conf modification
+	resolveConf   string        // qnx: the _CS_RESOLVE value the config was read from
 	soffset       uint32        // used by serverOffset
 	singleRequest bool          // use sequential A and AAAA queries instead of parallel queries
 	useTCP        bool          // force usage of TCP for DNS resolutions

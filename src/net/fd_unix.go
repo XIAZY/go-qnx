@@ -44,7 +44,10 @@ func (fd *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysc
 	// Do not need to call fd.writeLock here,
 	// because fd is not yet accessible to user,
 	// so no concurrent operations are possible.
-	switch err := connectFunc(fd.pfd.Sysfd, ra); err {
+	poll.SockRLock()
+	err := connectFunc(fd.pfd.Sysfd, ra)
+	poll.SockRUnlock()
+	switch err {
 	case syscall.EINPROGRESS, syscall.EALREADY, syscall.EINTR:
 	case nil, syscall.EISCONN:
 		select {
@@ -123,7 +126,9 @@ func (fd *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysc
 			}
 			return nil, err
 		}
+		poll.SockRLock()
 		nerr, err := getsockoptIntFunc(fd.pfd.Sysfd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+		poll.SockRUnlock()
 		if err != nil {
 			return nil, os.NewSyscallError("getsockopt", err)
 		}
@@ -135,7 +140,10 @@ func (fd *netFD) connect(ctx context.Context, la, ra syscall.Sockaddr) (rsa sysc
 			// The runtime poller can wake us up spuriously;
 			// see issues 14548 and 19289. Check that we are
 			// really connected; if not, wait again.
-			if rsa, err := syscall.Getpeername(fd.pfd.Sysfd); err == nil {
+			poll.SockRLock()
+			rsa, err := syscall.Getpeername(fd.pfd.Sysfd)
+			poll.SockRUnlock()
+			if err == nil {
 				return rsa, nil
 			}
 		default:
@@ -159,7 +167,9 @@ func (fd *netFD) accept() (netfd *netFD, err error) {
 		netfd.Close()
 		return nil, err
 	}
+	poll.SockRLock()
 	lsa, _ := syscall.Getsockname(netfd.pfd.Sysfd)
+	poll.SockRUnlock()
 	netfd.setAddr(netfd.addrFunc()(lsa), netfd.addrFunc()(rsa))
 	return netfd, nil
 }

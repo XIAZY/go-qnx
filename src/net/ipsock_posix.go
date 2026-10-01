@@ -39,7 +39,9 @@ func (p *ipStackCapabilities) probe() {
 	switch err {
 	case syscall.EAFNOSUPPORT, syscall.EPROTONOSUPPORT:
 	case nil:
+		poll.SockRLock()
 		poll.CloseFunc(s)
+		poll.SockRUnlock()
 		p.ipv4Enabled = true
 	}
 	var probes = []struct {
@@ -63,13 +65,22 @@ func (p *ipStackCapabilities) probe() {
 		if err != nil {
 			continue
 		}
-		defer poll.CloseFunc(s)
+		defer func() {
+			poll.SockRLock()
+			poll.CloseFunc(s)
+			poll.SockRUnlock()
+		}()
+		poll.SockRLock()
 		syscall.SetsockoptInt(s, syscall.IPPROTO_IPV6, syscall.IPV6_V6ONLY, probes[i].value)
+		poll.SockRUnlock()
 		sa, err := probes[i].laddr.sockaddr(syscall.AF_INET6)
 		if err != nil {
 			continue
 		}
-		if err := syscall.Bind(s, sa); err != nil {
+		poll.SockRLock()
+		err = syscall.Bind(s, sa)
+		poll.SockRUnlock()
+		if err != nil {
 			// If the bind was denied by a security policy (BPF, seccomp,
 			// SELinux, etc.), the kernel still supports IPv6 — the socket
 			// was created and setsockopt succeeded. Only treat errors like
