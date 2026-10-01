@@ -9,6 +9,7 @@ import (
 	"internal/bytealg"
 	"io/fs"
 	"net/netip"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -21,6 +22,63 @@ func parseLiteralIP(addr string) string {
 		return ""
 	}
 	return ip.String()
+}
+
+// parseHostsFileIP is parseLiteralIP for the address column of the
+// hosts file. QNX's stock /etc/hosts says "127.1 localhost", in the
+// shortened form inet_aton accepts; without it localhost would resolve
+// only to ::1, which QNX's default IPv4-only network stack cannot use.
+// Only the file is read this way: addresses given to the API are not.
+func parseHostsFileIP(addr string) string {
+	if s := parseLiteralIP(addr); s != "" || runtime.GOOS != "qnx" {
+		return s
+	}
+	if ip, ok := parseShortIPv4(addr); ok {
+		return ip.String()
+	}
+	return ""
+}
+
+// parseShortIPv4 parses the decimal forms "a.b" and "a.b.c" that
+// inet_aton accepts, in which the last part fills the remaining bytes.
+func parseShortIPv4(s string) (netip.Addr, bool) {
+	var parts []string // split at dots, keeping empty parts
+	for {
+		i := 0
+		for i < len(s) && s[i] != '.' {
+			i++
+		}
+		parts = append(parts, s[:i])
+		if i == len(s) {
+			break
+		}
+		s = s[i+1:]
+	}
+	if len(parts) < 2 || len(parts) > 3 {
+		return netip.Addr{}, false
+	}
+	var v uint32
+	for i, p := range parts {
+		if p == "" || len(p) > 10 || (len(p) > 1 && p[0] == '0') {
+			return netip.Addr{}, false
+		}
+		var n uint64
+		for _, c := range p {
+			if c < '0' || c > '9' {
+				return netip.Addr{}, false
+			}
+			n = n*10 + uint64(c-'0')
+		}
+		bits := uint(8)
+		if i == len(parts)-1 {
+			bits = uint(8 * (5 - len(parts)))
+		}
+		if n >= 1<<bits {
+			return netip.Addr{}, false
+		}
+		v = v<<bits | uint32(n)
+	}
+	return netip.AddrFrom4([4]byte{byte(v >> 24), byte(v >> 16), byte(v >> 8), byte(v)}), true
 }
 
 type byName struct {
@@ -83,7 +141,7 @@ func readHosts() {
 			if len(f) < 2 {
 				continue
 			}
-			addr := parseLiteralIP(f[0])
+			addr := parseHostsFileIP(f[0])
 			if addr == "" {
 				continue
 			}
