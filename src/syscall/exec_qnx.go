@@ -89,6 +89,10 @@ type qnxChild struct {
 // call.
 var closeLock sync.RWMutex
 
+// vforkFailHook, if set by a test, is called before each vfork; when it
+// returns true, the vfork is not made and fails with EBADF instead.
+var vforkFailHook func() bool
+
 // Close closes the file descriptor fd.
 func Close(fd int) (err error) {
 	closeLock.RLock()
@@ -155,25 +159,59 @@ func forkAndExecInChild(argv0 *byte, argv, envv []*byte, chroot, dir *byte, attr
 
 	// QNX's vfork duplicates the parent's descriptors one by one, and fails
 	// with EBADF, creating no child, if another thread creates or closes
-	// one meanwhile (1724 of 2000 vforks failed with two threads opening
-	// and closing descriptors, 57 with close held off, 0 with open and
-	// close held off). Close waits for closeLock, so hold it for the vfork.
-	// Descriptors created, or closed without Close (the runtime's own), can
-	// still race, so try again, up to a hundred times.
-	closeLock.Lock()
+	// one meanwhile. Close waits for closeLock, so the vfork holds it.
+	// Descriptors that other threads create, or the runtime closes without
+	// Close, can still make it fail. In a loop of vforks on QNX 6.5:
+	//
+	//	other threads                       EBADF          longest run
+	//	none                                0 of 1605      -
+	//	one blocked in open of a FIFO, 1 s  0 of 806       -
+	//	1 opening disk files                270 of 2518    0.8 ms
+	//	2 opening disk files                671 of 3401    2.4 ms
+	//	4 opening disk files                1126 of 2949   3.5 ms
+	//
+	// A thread blocked in open does no harm; opens that complete do, and
+	// the failures come in runs of a few milliseconds. So retry over time
+	// rather than a number of times: four times at once, then after sleeps
+	// of 1, 2, 4 and then 8 ms (QNX's clock ticks every 1 ms, so a shorter
+	// sleep would last a tick anyway), until the sleeps add up to a second.
+	// A sleep lasts at least as long as asked, so that is at least a second
+	// of trying. closeLock is released while sleeping, but syscall.forkExec
+	// holds ForkLock throughout: no other exec starts, and no descriptor is
+	// created through the ForkLock paths, until this one gets its child.
+	// That is rare and bounded.
 	var e uintptr
+	sleep := int64(0) // ns
+	slept := int64(0)
 	for try := 0; ; try++ {
-		// About to call vfork. No more allocation or calls of
-		// non-assembly functions.
-		runtime_BeforeFork()
-		pid, e = rawVforkExec(abi.FuncPCABIInternal(qnxChildExec), uintptr(unsafe.Pointer(c)), uintptr(unsafe.Pointer(&stk[len(stk)-8])))
-		runtime_AfterFork()
-		if e != uintptr(EBADF) || try == 100 {
+		closeLock.Lock()
+		if vforkFailHook != nil && vforkFailHook() {
+			e = uintptr(EBADF)
+		} else {
+			// About to call vfork. No more allocation or calls of
+			// non-assembly functions.
+			runtime_BeforeFork()
+			pid, e = rawVforkExec(abi.FuncPCABIInternal(qnxChildExec), uintptr(unsafe.Pointer(c)), uintptr(unsafe.Pointer(&stk[len(stk)-8])))
+			runtime_AfterFork()
+		}
+		closeLock.Unlock()
+		if e != uintptr(EBADF) || slept >= 1e9 {
 			break
 		}
-		runtime.Gosched()
+		if try < 4 {
+			runtime.Gosched()
+			continue
+		}
+		if sleep == 0 {
+			sleep = 1e6
+		} else if sleep < 8e6 {
+			sleep *= 2
+		}
+		ts := NsecToTimespec(sleep)
+		for Nanosleep(&ts, &ts) == EINTR { // no SA_RESTART on qnx
+		}
+		slept += sleep
 	}
-	closeLock.Unlock()
 
 	// The child has exec'd or exited: it no longer uses any of this.
 	runtime.KeepAlive(c)

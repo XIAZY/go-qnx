@@ -15,6 +15,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"time"
 )
 
 func init() {
@@ -177,6 +178,42 @@ func TestQNXExecWhileClosing(t *testing.T) {
 		if err := cmd.Run(); err != nil {
 			t.Fatalf("exec %d of %d (Dir %q): %v", i+1, n, cmd.Dir, err)
 		}
+	}
+}
+
+// vfork also fails with EBADF while other threads keep opening files, in
+// runs of up to a few milliseconds. An exec with Dir set, which uses
+// vfork, must ride out such a run (cmd/go starts the compiler that way
+// while it opens files on other threads), and must still give up when
+// vfork keeps failing. The runs are simulated: they are too rare to
+// provoke reliably in a test.
+func TestQNXExecDirVforkFailures(t *testing.T) {
+	defer syscall.SetVforkFailHook(nil)
+	run := func(fail time.Duration) (time.Duration, error) {
+		var start time.Time
+		syscall.SetVforkFailHook(func() bool {
+			if start.IsZero() {
+				start = time.Now()
+			}
+			return time.Since(start) < fail
+		})
+		cmd := exec.Command("/bin/true")
+		cmd.Dir = "/" // vfork, not spawn
+		t0 := time.Now()
+		err := cmd.Run()
+		return time.Since(t0), err
+	}
+	// A 20 ms run of failures: retries spread over time outlast it.
+	if d, err := run(20 * time.Millisecond); err != nil {
+		t.Errorf("exec through 20 ms of vfork failures: %v after %v", err, d)
+	}
+	// Failures that never end: give up with EBADF after about a second.
+	d, err := run(time.Hour)
+	if !errors.Is(err, syscall.EBADF) {
+		t.Errorf("exec with vfork always failing: got %v, want EBADF", err)
+	}
+	if d < time.Second || d > 5*time.Second {
+		t.Errorf("exec with vfork always failing gave up after %v, want 1 to 5 s", d)
 	}
 }
 
