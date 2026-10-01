@@ -527,28 +527,6 @@ TEXT runtime·pipe_trampoline(SB),NOSPLIT,$0
 ok:
 	LEAVE
 
-TEXT runtime·poll_trampoline(SB),NOSPLIT,$0
-	ENTER(16)
-	NOP	SP	// tell vet SP changed - stop checking offsets
-	MOVL	0(DX), AX
-	MOVL	AX, 0(SP)		// fds
-	MOVL	4(DX), AX
-	MOVL	AX, 4(SP)		// nfds
-	MOVL	8(DX), AX
-	MOVL	AX, 8(SP)		// timeout
-	CALL	libc_poll(SB)
-	MOVL	$0, BX
-	CMPL	AX, $-1
-	JNE	noerr
-	ERRNO
-	MOVL	AX, BX
-	MOVL	$-1, AX
-noerr:
-	MOVL	8(BP), DX
-	MOVL	AX, 12(DX)		// ret
-	MOVL	BX, 16(DX)		// errno
-	LEAVE
-
 TEXT runtime·setitimer_trampoline(SB),NOSPLIT,$0
 	ENTER(16)
 	NOP	SP	// tell vet SP changed - stop checking offsets
@@ -581,18 +559,6 @@ TEXT runtime·sysconf_trampoline(SB),NOSPLIT,$0
 	MOVL	0(DX), AX
 	MOVL	AX, 0(SP)		// name
 	CALL	libc_sysconf(SB)
-	LEAVE
-
-TEXT runtime·connectServerInfo_trampoline(SB),NOSPLIT,$0
-	ENTER(16)
-	NOP	SP	// tell vet SP changed - stop checking offsets
-	MOVL	0(DX), AX
-	MOVL	AX, 0(SP)		// pid
-	MOVL	4(DX), AX
-	MOVL	AX, 4(SP)		// coid
-	MOVL	8(DX), AX
-	MOVL	AX, 8(SP)		// info
-	CALL	libc_ConnectServerInfo(SB)
 	LEAVE
 
 TEXT runtime·fcntl_trampoline(SB),NOSPLIT,$0

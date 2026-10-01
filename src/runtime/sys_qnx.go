@@ -338,23 +338,6 @@ func pipe() (r, w int32, errno int32) {
 }
 func pipe_trampoline()
 
-// poll returns the number of ready descriptors, or -1 and an errno.
-//
-//go:nosplit
-func poll(pfds *pollfd, npfds uint32, timeout int32) (int32, int32) {
-	args := struct {
-		pfds    unsafe.Pointer
-		npfds   uint32
-		timeout int32
-		ret     int32
-		errno   int32
-	}{noescape(unsafe.Pointer(pfds)), npfds, timeout, 0, 0}
-	libcCall(unsafe.Pointer(abi.FuncPCABI0(poll_trampoline)), unsafe.Pointer(&args))
-	KeepAlive(pfds)
-	return args.ret, args.errno
-}
-func poll_trampoline()
-
 // setitimerErrno is the errno of the last failed setitimer, or 0.
 var setitimerErrno int32
 
@@ -391,32 +374,6 @@ func sysconf(name int32) int32 {
 	return libcCall(unsafe.Pointer(abi.FuncPCABI0(sysconf_trampoline)), unsafe.Pointer(&name))
 }
 func sysconf_trampoline()
-
-// serverInfo is QNX's struct _server_info (struct _msg_info).
-type serverInfo struct {
-	nd    uint32
-	srcnd uint32
-	pid   int32
-	tid   int32
-	chid  int32
-	_     [7]int32
-}
-
-// connectServerInfo returns information about the server at the other
-// end of connection coid, which for a file descriptor is the resource
-// manager serving it. It returns the coid described, which is not coid
-// if coid is not a connection (see serverOf), or -1 on failure.
-//
-//go:nosplit
-//go:cgo_unsafe_args
-func connectServerInfo(coid int32, info *serverInfo) int32 {
-	args := struct {
-		pid, coid int32
-		info      *serverInfo
-	}{0, coid, info}
-	return libcCall(unsafe.Pointer(abi.FuncPCABI0(connectServerInfo_trampoline)), unsafe.Pointer(&args))
-}
-func connectServerInfo_trampoline()
 
 //go:nosplit
 //go:cgo_unsafe_args
@@ -680,11 +637,9 @@ func syscall_qnxThreadSigmask() (lo, hi uint32) {
 //go:cgo_import_dynamic libc_write write "libc.so.3"
 //go:cgo_import_dynamic libc_clock_gettime clock_gettime "libc.so.3"
 //go:cgo_import_dynamic libc_pipe pipe "libc.so.3"
-//go:cgo_import_dynamic libc_poll poll "libc.so.3"
 //go:cgo_import_dynamic libc_setitimer setitimer "libc.so.3"
 //go:cgo_import_dynamic libc_usleep usleep "libc.so.3"
 //go:cgo_import_dynamic libc_sysconf sysconf "libc.so.3"
-//go:cgo_import_dynamic libc_ConnectServerInfo ConnectServerInfo "libc.so.3"
 //go:cgo_import_dynamic libc_fcntl fcntl "libc.so.3"
 //go:cgo_import_dynamic libc_sigaction sigaction "libc.so.3"
 //go:cgo_import_dynamic _ _ "libc.so.3"

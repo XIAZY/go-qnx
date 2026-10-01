@@ -104,12 +104,6 @@ const (
 	_CLOCK_REALTIME  = 0x0
 	_CLOCK_MONOTONIC = 0x2
 
-	_POLLIN   = 0x5
-	_POLLOUT  = 0x2
-	_POLLERR  = 0x20
-	_POLLHUP  = 0x40
-	_POLLNVAL = 0x1000
-
 	_SC_NPROCESSORS_ONLN = 0x5b
 	_SC_PAGESIZE         = 0xb
 )
@@ -208,12 +202,6 @@ type pthreadattr struct {
 
 type semt struct {
 	_ [8]byte
-}
-
-type pollfd struct {
-	fd      int32
-	events  int16
-	revents int16
 }
 
 // Sizes and offsets measured with the QNX 6.5 headers. Each pair of
