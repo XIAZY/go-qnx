@@ -12,6 +12,13 @@ package cgotest
 
 /*
 #include <complex.h>
+#ifdef __QNX__
+// QNX's <complex.h> defines _Complex_I, and so I, as a call to
+// _FCbuild, which is not a constant. Issue 4054 wants a constant I;
+// use the compiler's, as glibc does.
+#undef _Complex_I
+#define _Complex_I (__extension__ 1.0iF)
+#endif
 #include <math.h>
 #include <stdarg.h>
 #include <stdbool.h>
