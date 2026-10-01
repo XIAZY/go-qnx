@@ -29,6 +29,15 @@ import (
 // package; calls made by C code, including the cgo resolver; and a
 // RawConn's Control, Read and Write functions.
 //
+// A second hazard is beyond any lock: removing the name of a Unix socket
+// at all, whether the socket is open or closed and whichever program
+// removes it (rm included), can hang io-pkt the same way, until a
+// reboot, with a small chance each time. Removing the name after the
+// socket is closed did so more often. Sockets without names (socketpair,
+// unbound sockets) did not trigger it. So programs that create and remove
+// many named Unix sockets should prefer socketpair or loopback TCP, and
+// where they must remove a name, remove it while the socket is open.
+//
 // Only the system call itself is covered, never a wait for readiness in
 // the poller: a non-blocking socket call returns at once, so an unlink
 // waits for at most one system call on each other socket. A socket made
