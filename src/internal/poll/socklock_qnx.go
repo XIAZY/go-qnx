@@ -23,9 +23,9 @@ import (
 // reads as well, never wedged io-pkt. The poller's poll(2) is left out for
 // the same reason.
 //
-// os.Remove (and so os.RemoveAll) of a socket name goes through
-// UnlinkSocket too. Not covered: other processes; os.Root's Remove of a
-// socket name; sockets used through os.File, whose FDs are files to this
+// os.Remove (and so os.RemoveAll, and os.Root's Remove and RemoveAll) of
+// a socket name goes through UnlinkSocket too. Not covered: other
+// processes; sockets used through os.File, whose FDs are files to this
 // package; calls made by C code, including the cgo resolver; and a
 // RawConn's Control, Read and Write functions.
 //
