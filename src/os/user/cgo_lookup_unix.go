@@ -68,9 +68,11 @@ func lookupUnixUid(uid int) (*User, error) {
 }
 
 func buildUser(pwd *_C_struct_passwd) *User {
+	// uid_t and gid_t are 32 bits wide, but signed on QNX: convert
+	// through uint32 so that large IDs are not sign-extended.
 	u := &User{
-		Uid:      strconv.FormatUint(uint64(_C_pw_uid(pwd)), 10),
-		Gid:      strconv.FormatUint(uint64(_C_pw_gid(pwd)), 10),
+		Uid:      strconv.FormatUint(uint64(uint32(_C_pw_uid(pwd))), 10),
+		Gid:      strconv.FormatUint(uint64(uint32(_C_pw_gid(pwd))), 10),
 		Username: _C_GoString(_C_pw_name(pwd)),
 		Name:     _C_GoString(_C_pw_gecos(pwd)),
 		HomeDir:  _C_GoString(_C_pw_dir(pwd)),
@@ -194,7 +196,7 @@ func isSizeReasonable(sz int64) bool {
 // Because we can't use cgo in tests:
 func structPasswdForNegativeTest() _C_struct_passwd {
 	sp := _C_struct_passwd{}
-	*_C_pw_uidp(&sp) = 1<<32 - 2
-	*_C_pw_gidp(&sp) = 1<<32 - 3
+	*_C_pw_uidp(&sp) = ^_C_uid_t(1) // 1<<32 - 2, or -2 where uid_t is signed
+	*_C_pw_gidp(&sp) = ^_C_gid_t(2) // 1<<32 - 3, or -3 where gid_t is signed
 	return sp
 }

@@ -295,6 +295,20 @@ func openDirNolog(name string) (*File, error) {
 		return nil, &PathError{Op: "open", Path: name, Err: e}
 	}
 
+	if syscall.O_DIRECTORY == 0 {
+		// No O_DIRECTORY (QNX 6.5), so check by hand: reading a
+		// regular file as a directory would return its contents.
+		var st syscall.Stat_t
+		e = ignoringEINTR(func() error { return syscall.Fstat(r, &st) })
+		if e == nil && st.Mode&syscall.S_IFMT != syscall.S_IFDIR {
+			e = syscall.ENOTDIR
+		}
+		if e != nil {
+			syscall.Close(r)
+			return nil, &PathError{Op: "open", Path: name, Err: e}
+		}
+	}
+
 	if !supportsCloseOnExec {
 		syscall.CloseOnExec(r)
 	}
@@ -360,7 +374,7 @@ func Remove(name string) error {
 	// Try both: it is cheaper on average than
 	// doing a Stat plus the right one.
 	e := ignoringEINTR(func() error {
-		return syscall.Unlink(name)
+		return unlink(name)
 	})
 	if e == nil {
 		return nil

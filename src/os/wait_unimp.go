@@ -5,7 +5,7 @@
 // aix, darwin, js/wasm, openbsd, solaris and wasip1/wasm don't implement
 // waitid/wait6.
 
-//go:build aix || darwin || (js && wasm) || openbsd || solaris || wasip1
+//go:build aix || darwin || (js && wasm) || openbsd || qnx || solaris || wasip1
 
 package os
 
