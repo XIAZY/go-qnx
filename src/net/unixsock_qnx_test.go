@@ -91,8 +91,8 @@ func TestQNXUnixRelativeNameAtRoot(t *testing.T) {
 }
 
 // TestQNXUnlinkWhileSocketCalls closes Unix listeners, which unlinks their
-// names, and removes the names of Unix datagram sockets, while other
-// goroutines make socket calls of their own. io-pkt stops answering for
+// names, and removes the names of open Unix datagram sockets with
+// os.Remove, while other goroutines make socket calls of their own. io-pkt stops answering for
 // good if a Unix socket's name is unlinked while it serves another socket
 // request (see internal/poll's socklock_qnx.go); without the socket lock,
 // this pattern wedged it within a few dozen rounds. A failure is a hung
@@ -139,11 +139,13 @@ func TestQNXUnlinkWhileSocketCalls(t *testing.T) {
 				errc <- err
 				return
 			}
-			if err := c.Close(); err != nil {
+			// Remove the name while the socket is open, as removing
+			// a closed socket's name is unsafe (see unixsock_qnx.go).
+			if err := os.Remove(name); err != nil {
 				errc <- err
 				return
 			}
-			if err := os.Remove(name); err != nil {
+			if err := c.Close(); err != nil {
 				errc <- err
 				return
 			}
@@ -154,5 +156,51 @@ func TestQNXUnlinkWhileSocketCalls(t *testing.T) {
 		if err := <-errc; err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// TestQNXUnixConnCloseRemovesName checks that on qnx a connection that
+// package net bound to a name removes it when it closes, and that an
+// accepted connection, whose local name is its listener's, does not.
+func TestQNXUnixConnCloseRemovesName(t *testing.T) {
+	name := testUnixAddr(t)
+	c, err := ListenPacket("unixgram", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(name); err != nil {
+		t.Fatalf("unixgram socket not created: %v", err)
+	}
+	if err := c.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(name); err == nil {
+		t.Errorf("%s still exists after Close of a unixgram conn", name)
+	}
+
+	lname := testUnixAddr(t)
+	ln, err := Listen("unix", lname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	done := make(chan error, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			err = c.Close()
+		}
+		done <- err
+	}()
+	d, err := Dial("unix", lname)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	d.Close()
+	if _, err := os.Stat(lname); err != nil {
+		t.Errorf("listener's name gone after an accepted conn closed: %v", err)
 	}
 }

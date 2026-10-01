@@ -75,6 +75,13 @@ func ResolveUnixAddr(network, address string) (*UnixAddr, error) {
 // to Unix domain sockets.
 type UnixConn struct {
 	conn
+
+	// As in UnixListener: on qnx, the name the connection was bound to
+	// by ListenUnixgram, ListenPacket or a Dial with a local address,
+	// which Close removes (see unixsock_qnx.go). Unset elsewhere.
+	path       string
+	unlink     bool
+	unlinkOnce sync.Once
 }
 
 // SyscallConn returns a raw network connection.
@@ -200,7 +207,7 @@ func (c *UnixConn) WriteMsgUnix(b, oob []byte, addr *UnixAddr) (n, oobn int, err
 	return
 }
 
-func newUnixConn(fd *netFD) *UnixConn { return &UnixConn{conn{fd}} }
+func newUnixConn(fd *netFD) *UnixConn { return &UnixConn{conn: conn{fd}} }
 
 // DialUnix acts like [Dial] for Unix networks.
 //

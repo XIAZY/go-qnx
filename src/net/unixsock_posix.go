@@ -11,6 +11,7 @@ import (
 	"errors"
 	"internal/poll"
 	"os"
+	"runtime"
 	"syscall"
 )
 
@@ -166,7 +167,11 @@ func (sd *sysDialer) dialUnix(ctx context.Context, laddr, raddr *UnixAddr) (*Uni
 	if err != nil {
 		return nil, err
 	}
-	return newUnixConn(fd), nil
+	c := newUnixConn(fd)
+	if laddr != nil {
+		c.setUnlink()
+	}
+	return c, nil
 }
 
 func (ln *UnixListener) accept() (*UnixConn, error) {
@@ -175,6 +180,17 @@ func (ln *UnixListener) accept() (*UnixConn, error) {
 		return nil, err
 	}
 	return newUnixConn(fd), nil
+}
+
+// setUnlink records, on qnx, the name c was bound to, so that Close
+// removes it.
+func (c *UnixConn) setUnlink() {
+	if runtime.GOOS != "qnx" {
+		return
+	}
+	if a, ok := c.fd.laddr.(*UnixAddr); ok && a != nil && a.Name != "" && a.Name[0] != '@' {
+		c.path, c.unlink = a.Name, true
+	}
 }
 
 func (ln *UnixListener) close() error {
@@ -242,5 +258,7 @@ func (sl *sysListener) listenUnixgram(ctx context.Context, laddr *UnixAddr) (*Un
 	if err != nil {
 		return nil, err
 	}
-	return newUnixConn(fd), nil
+	c := newUnixConn(fd)
+	c.setUnlink()
+	return c, nil
 }

@@ -234,6 +234,11 @@ func TestFilePacketConn(t *testing.T) {
 				t.Skipf("skipping %s test", tt.network)
 			}
 
+			if runtime.GOOS == "qnx" && tt.network == "unixgram" {
+				// On qnx, closing c1 removes its name (see
+				// unixsock_qnx.go), and the test then writes to it.
+				t.Skip("skipping on qnx: closing a unixgram conn removes its name")
+			}
 			c1 := newLocalPacketListener(t, tt.network)
 			switch tt.network {
 			case "unixgram":

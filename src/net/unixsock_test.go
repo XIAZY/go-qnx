@@ -446,6 +446,11 @@ func TestUnixUnlink(t *testing.T) {
 	})
 
 	t.Run("Listen/SetUnlinkOnClose(false)", func(t *testing.T) {
+		if runtime.GOOS == "qnx" {
+			// The subtest removes the name of a closed socket, which
+			// can hang io-pkt until a reboot (see unixsock_qnx.go).
+			t.Skip("skipping on qnx: removes a closed socket's name")
+		}
 		l := listen(t)
 		checkExists(t, "after Listen")
 		l.SetUnlinkOnClose(false)
