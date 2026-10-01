@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build unix && !android && !openbsd
+//go:build unix && !android && !openbsd && !qnx
 
 // Required for darwin ucontext.
 #define _XOPEN_SOURCE

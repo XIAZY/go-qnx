@@ -210,6 +210,11 @@ func buildTestProg(t *testing.T, binary string, flags ...string) (string, error)
 }
 
 func TestVDSO(t *testing.T) {
+	if runtime.GOOS == "qnx" {
+		// SignalInVDSO profiles the CPU, which needs SIGPROF from a
+		// CPU-time timer; QNX 6.5 has none.
+		t.Skip("qnx has no CPU-time timers")
+	}
 	t.Parallel()
 	output := runTestProg(t, "testprog", "SignalInVDSO")
 	want := "success\n"
@@ -780,6 +785,13 @@ func TestPanicInlined(t *testing.T) {
 // We want to delay exiting until a panic print is complete.
 func TestPanicRace(t *testing.T) {
 	testenv.MustHaveGoRun(t)
+	if runtime.GOOS == "qnx" && runtime.GOMAXPROCS(0) > 1 {
+		// runtime.main waits at most 1000 Gosched calls, about
+		// 100 µs, for the panicking goroutine, which must first be
+		// resumed on another thread. Waking a thread takes about
+		// 120 µs on QNX 6.5, so main usually exits 0 first.
+		t.Skip("skipping on qnx with GOMAXPROCS > 1: thread wake-up outlasts runtime.main's wait for panicking goroutines")
+	}
 
 	exe, err := buildTestProg(t, "testprog")
 	if err != nil {
@@ -845,6 +857,8 @@ func TestTimePprof(t *testing.T) {
 	switch runtime.GOOS {
 	case "aix", "darwin", "illumos", "openbsd", "solaris":
 		t.Skipf("skipping on %s because nanotime calls libc", runtime.GOOS)
+	case "qnx":
+		t.Skip("skipping on qnx because nanotime calls libc and there are no CPU-time timers for SIGPROF")
 	}
 	if race.Enabled || asan.Enabled || msan.Enabled {
 		t.Skip("skipping on sanitizers because the sanitizer runtime is external code")
