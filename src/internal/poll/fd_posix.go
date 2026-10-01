@@ -26,6 +26,8 @@ func (fd *FD) Shutdown(how int) error {
 		return err
 	}
 	defer fd.decref()
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.Shutdown(fd.Sysfd, how)
 }
 
