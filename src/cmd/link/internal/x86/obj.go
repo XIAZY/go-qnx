@@ -65,6 +65,7 @@ func Init() (*sys.Arch, ld.Arch) {
 			Openbsddynld:   "/usr/libexec/ld.so",
 			Netbsddynld:    "/usr/libexec/ld.elf_so",
 			Solarisdynld:   "/lib/ld.so.1",
+			Qnxdynld:       "/usr/lib/ldqnx.so.2", // symlink to libc.so.3, which is also the loader
 
 			Reloc1:    elfreloc1,
 			RelocSize: 8,
@@ -92,7 +93,8 @@ func archinit(ctxt *ld.Link) {
 	case objabi.Hlinux, /* elf32 executable */
 		objabi.Hfreebsd,
 		objabi.Hnetbsd,
-		objabi.Hopenbsd:
+		objabi.Hopenbsd,
+		objabi.Hqnx:
 		ld.Elfinit(ctxt)
 
 		ld.HEADR = ld.ELFRESERVE
