@@ -19,7 +19,9 @@ static int clearRestart(int sig) {
 	if (sigaction(sig, NULL, &sa) < 0) {
 		return errno;
 	}
+#ifdef SA_RESTART // QNX 6.5 never restarts interrupted calls
 	sa.sa_flags &=~ SA_RESTART;
+#endif
 	if (sigaction(sig, &sa, NULL) < 0) {
 		return errno;
 	}

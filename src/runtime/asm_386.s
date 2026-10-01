@@ -159,11 +159,23 @@ nocpuinfo:
 	MOVL	AX, g_stackguard0(CX)
 	MOVL	AX, g_stackguard1(CX)
 
+#ifdef GOOS_qnx
+	// Check g's slot in the control block, as without cgo.
+	JMP	needtls
+#endif
 #ifndef GOOS_windows
 	// skip runtime·ldt0setup(SB) and tls test after _cgo_init for non-windows
 	JMP ok
 #endif
 needtls:
+#ifdef GOOS_qnx
+	// libc has already given the thread its control block, where g
+	// lives. Make sure nothing else is using g's slot.
+	get_tls(BX)
+	CMPL	g(BX), $0
+	JEQ	ok
+	CALL	runtime·qnxtlsbad(SB)
+#endif
 #ifdef GOOS_openbsd
 	// skip runtime·ldt0setup(SB) and tls test on OpenBSD in all cases
 	JMP	ok
