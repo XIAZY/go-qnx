@@ -957,3 +957,98 @@ TEXT runtime·qnxGO386Softfloat(SB),NOSPLIT,$0-1
 	MOVB	$0, ret+0(FP)
 #endif
 	RET
+
+// Kernel calls for the network poller (netpoll_qnx.go). The _r
+// forms return -errno instead of setting errno.
+
+TEXT runtime·channelCreate_trampoline(SB),NOSPLIT,$0
+	ENTER(16)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// flags
+	CALL	libc_ChannelCreate_r(SB)
+	LEAVE
+
+TEXT runtime·connectAttach_trampoline(SB),NOSPLIT,$0
+	ENTER(32)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// nd
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// pid
+	MOVL	8(DX), AX
+	MOVL	AX, 8(SP)		// chid
+	MOVL	12(DX), AX
+	MOVL	AX, 12(SP)		// index
+	MOVL	16(DX), AX
+	MOVL	AX, 16(SP)		// flags
+	CALL	libc_ConnectAttach_r(SB)
+	LEAVE
+
+TEXT runtime·msgReceivePulse_trampoline(SB),NOSPLIT,$0
+	ENTER(16)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// chid
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// pulse
+	MOVL	8(DX), AX
+	MOVL	AX, 8(SP)		// bytes
+	MOVL	12(DX), AX
+	MOVL	AX, 12(SP)		// info
+	CALL	libc_MsgReceivePulse_r(SB)
+	LEAVE
+
+TEXT runtime·msgSendPulse_trampoline(SB),NOSPLIT,$0
+	ENTER(16)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// coid
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// priority
+	MOVL	8(DX), AX
+	MOVL	AX, 8(SP)		// code
+	MOVL	12(DX), AX
+	MOVL	AX, 12(SP)		// value
+	CALL	libc_MsgSendPulse_r(SB)
+	LEAVE
+
+TEXT runtime·timerTimeout_trampoline(SB),NOSPLIT,$0
+	ENTER(32)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// id
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// flags
+	MOVL	8(DX), AX
+	MOVL	AX, 8(SP)		// notify
+	MOVL	12(DX), AX
+	MOVL	AX, 12(SP)		// ntime
+	MOVL	16(DX), AX
+	MOVL	AX, 16(SP)		// otime
+	CALL	libc_TimerTimeout_r(SB)
+	LEAVE
+
+TEXT runtime·ionotify_trampoline(SB),NOSPLIT,$0
+	ENTER(16)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// fd
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// action
+	MOVL	8(DX), AX
+	MOVL	AX, 8(SP)		// flags
+	MOVL	12(DX), AX
+	MOVL	AX, 12(SP)		// event
+	CALL	libc_ionotify(SB)
+	MOVL	$0, BX
+	CMPL	AX, $-1
+	JNE	ionotifyok
+	ERRNO
+	MOVL	AX, BX
+	MOVL	$-1, AX
+ionotifyok:
+	MOVL	8(BP), DX
+	MOVL	AX, 16(DX)		// ret
+	MOVL	BX, 20(DX)		// errno
+	LEAVE
