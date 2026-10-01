@@ -9,6 +9,7 @@ package work
 import (
 	"bytes"
 	"internal/testenv"
+	"runtime"
 	"strings"
 	"testing"
 	"unicode"
@@ -122,7 +123,14 @@ func FuzzSplitPkgConfigOutput(f *testing.F) {
 		// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/echo.html#tag_20_37_16:
 		// “It is not possible to use echo portably across all POSIX systems unless
 		// both -n (as the first argument) and escape sequences are omitted.”
-		cmd := testenv.Command(t, "/bin/sh", "-c", "printf '%s\n' "+string(b))
+		script := "printf '%s\n' " + string(b)
+		if runtime.GOOS == "qnx" {
+			// QNX 6.5's printf does not reuse the format for extra
+			// arguments, as POSIX requires: it prints only the first.
+			// A for loop's word list is expanded like command arguments.
+			script = "for a in " + string(b) + "; do printf '%s\n' \"$a\"; done"
+		}
+		cmd := testenv.Command(t, "/bin/sh", "-c", script)
 		cmd.Env = append(cmd.Environ(), "LC_ALL=POSIX", "POSIXLY_CORRECT=1")
 		cmd.Stderr = new(strings.Builder)
 		out, err := cmd.Output()
