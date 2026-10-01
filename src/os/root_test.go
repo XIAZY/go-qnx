@@ -523,7 +523,7 @@ func TestRootChtimes(t *testing.T) {
 				mtime: time.Time{},
 			}} {
 				switch runtime.GOOS {
-				case "js", "plan9":
+				case "js", "plan9", "qnx":
 					times.atime = times.atime.Truncate(1 * time.Second)
 					times.mtime = times.mtime.Truncate(1 * time.Second)
 				case "illumos":
@@ -891,8 +891,9 @@ func testRootMoveFrom(t *testing.T, rename bool) {
 					t.Fatalf("root.Readlink(%q) = %v, want success", test.ltarget, err)
 				}
 
-				// When GOOS=js, creating a hard link to a symlink fails.
-				if !rename && runtime.GOOS == "js" {
+				// When GOOS=js or GOOS=qnx (no linkat), creating a hard
+				// link to a symlink fails.
+				if !rename && (runtime.GOOS == "js" || runtime.GOOS == "qnx") {
 					wantError = true
 				}
 
@@ -1107,6 +1108,14 @@ var rootConsistencyTestCases = []rootConsistencyTest{{
 		"file",
 	},
 	open: ".",
+	check: func(t *testing.T) {
+		if runtime.GOOS == "qnx" && strings.HasPrefix(t.Name(), "TestRootConsistencyRename/from/") {
+			// As on Windows, QNX's rename("dir/.") renames dir,
+			// while Root.Rename(".") fails: the root cannot move
+			// into itself.
+			t.Skip("known inconsistency on qnx")
+		}
+	},
 }, {
 	name: "file slash dot",
 	fs: []string{
@@ -1129,6 +1138,14 @@ var rootConsistencyTestCases = []rootConsistencyTest{{
 		"file",
 	},
 	open: "./",
+	check: func(t *testing.T) {
+		if runtime.GOOS == "qnx" && strings.HasPrefix(t.Name(), "TestRootConsistencyRename/from/") {
+			// As on Windows, QNX's rename("dir/.") renames dir,
+			// while Root.Rename(".") fails: the root cannot move
+			// into itself.
+			t.Skip("known inconsistency on qnx")
+		}
+	},
 }, {
 	name: "file slash",
 	fs: []string{
@@ -1196,6 +1213,13 @@ var rootConsistencyTestCases = []rootConsistencyTest{{
 		"b/target",
 	},
 	open: "a/../target",
+	check: func(t *testing.T) {
+		if runtime.GOOS == "qnx" {
+			// QNX resolves ".." lexically, so os.Open does not
+			// find a/../target, while Root follows a first.
+			t.Skip("known inconsistency on qnx")
+		}
+	},
 }, {
 	name: "symlink to dir ends in slash",
 	fs: []string{
@@ -1657,7 +1681,7 @@ func TestRootRenameAfterOpen(t *testing.T) {
 	switch runtime.GOOS {
 	case "windows":
 		t.Skip("renaming open files not supported on " + runtime.GOOS)
-	case "js", "plan9":
+	case "js", "plan9", "qnx":
 		t.Skip("openat not supported on " + runtime.GOOS)
 	case "wasip1":
 		if os.Getenv("GOWASIRUNTIME") == "wazero" {
@@ -3279,6 +3303,11 @@ func TestRootMultiReadFile(t *testing.T) {
 		case runtime.GOOS == "plan9":
 			// Plan9 lets you read from directories.
 			// Just rely on consistency checks.
+		case runtime.GOOS == "qnx" && test.target.finalKind() == testFileDir:
+			// QNX lets you read from directories too, and what it
+			// reads (directory entries, with inode numbers) differs
+			// between the trees compared.
+			return "", gotErr
 		case runtime.GOOS == "netbsd":
 			// See https://go.dev/issue/80322:
 			// NetBSD builder appears to be succeeding on read-from-dir as well.
