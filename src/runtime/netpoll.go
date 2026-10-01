@@ -348,6 +348,9 @@ func poll_runtime_pollWait(pd *pollDesc, mode int) int {
 	if GOOS == "solaris" || GOOS == "illumos" || GOOS == "aix" || GOOS == "qnx" || GOOS == "wasip1" {
 		netpollarm(pd, mode)
 	}
+	if GOOS == "qnx" {
+		defer netpollWaitDone(pd, mode)
+	}
 	for !netpollblock(pd, int32(mode), false) {
 		errcode = netpollcheckerr(pd, int32(mode))
 		if errcode != pollNoError {
