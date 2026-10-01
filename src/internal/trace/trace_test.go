@@ -98,6 +98,9 @@ func TestTraceCgoCallback(t *testing.T) {
 }
 
 func TestTraceCPUProfile(t *testing.T) {
+	if runtime.GOOS == "qnx" {
+		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
+	}
 	testTraceProg(t, "cpu-profile.go", func(t *testing.T, tb, stderr []byte, _ string) {
 		// Parse stderr which has a CPU profile summary, if everything went well.
 		// (If it didn't, we shouldn't even make it here.)
@@ -656,11 +659,11 @@ func testTraceProg(t *testing.T, progName string, extra func(t *testing.T, trace
 		// Test the trace and the parser.
 		v := testtrace.NewValidator()
 		v.GoVersion = version.Current
-		if runtime.GOOS == "windows" && stress {
+		if (runtime.GOOS == "windows" || runtime.GOOS == "qnx") && stress {
 			// Under stress mode we're constantly advancing trace generations.
-			// Windows' clock granularity is too coarse to guarantee monotonic
-			// timestamps for monotonic and wall clock time in this case, so
-			// skip the checks.
+			// The clock granularity of Windows, and QNX's 1 ms tick, are too
+			// coarse to guarantee monotonic timestamps for monotonic and wall
+			// clock time in this case, so skip the checks.
 			v.SkipClockSnapshotChecks()
 		}
 		testReader(t, bytes.NewReader(tb), v, testtrace.ExpectSuccess())
