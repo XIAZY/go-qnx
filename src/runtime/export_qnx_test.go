@@ -30,3 +30,10 @@ func QNXTSCInjectRate(num, den uint32, window int64) {
 
 // QNXCheckTSC runs sysmon's check of the TSC rate.
 func QNXCheckTSC() { qnxCheckTSC() }
+
+// NetpollPulseCounts returns how many times the network poller has sent a
+// descriptor's pulse itself, armed a descriptor with TRANARM, and woken a
+// descriptor's waiters for a recheck.
+func NetpollPulseCounts() (self, tran, recheck uint64) {
+	return pulseNSelf.Load(), pulseNTran.Load(), pulseNRecheck.Load()
+}
