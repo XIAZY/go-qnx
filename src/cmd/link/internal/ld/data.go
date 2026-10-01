@@ -251,8 +251,8 @@ func (st *relocSymState) relocsym(s loader.Sym, P []byte) {
 		}
 
 		// We need to be able to reference dynimport symbols when linking against
-		// shared libraries, and AIX, Darwin, OpenBSD and Solaris always need it.
-		if !target.IsAIX() && !target.IsDarwin() && !target.IsSolaris() && !target.IsOpenbsd() && rs != 0 && rst == sym.SDYNIMPORT && !target.IsDynlinkingGo() && !ldr.AttrSubSymbol(rs) {
+		// shared libraries, and AIX, Darwin, OpenBSD, QNX and Solaris always need it.
+		if !target.IsAIX() && !target.IsDarwin() && !target.IsSolaris() && !target.IsOpenbsd() && !target.IsQnx() && rs != 0 && rst == sym.SDYNIMPORT && !target.IsDynlinkingGo() && !ldr.AttrSubSymbol(rs) {
 			if !(target.IsPPC64() && target.IsExternal() && ldr.SymName(rs) == ".TOC.") {
 				st.err.Errorf(s, "unhandled relocation for %s (type %d (%s) rtype %d (%s))", ldr.SymName(rs), rst, rst, rt, sym.RelocName(target.Arch, rt))
 			}
@@ -2117,7 +2117,9 @@ func (state *dodataState) allocateDataSections(ctxt *Link) {
 	 * segtext.
 	 */
 	var segro *sym.Segment
-	if ctxt.IsELF && ctxt.LinkMode == LinkInternal {
+	// QNX 6.5's loader cannot handle a separate read-only segment
+	// (three PT_LOADs), so read-only data stays in the text segment.
+	if ctxt.IsELF && ctxt.LinkMode == LinkInternal && ctxt.HeadType != objabi.Hqnx {
 		segro = &Segrodata
 	} else if ctxt.HeadType == objabi.Hwindows {
 		segro = &Segrodata
