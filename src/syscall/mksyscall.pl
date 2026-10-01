@@ -27,6 +27,7 @@ my $_32bit = "";
 my $plan9 = 0;
 my $darwin = 0;
 my $openbsd = 0;
+my $qnx = 0;
 my $netbsd = 0;
 my $dragonfly = 0;
 my $arm = 0; # 64-bit value should use (even, odd)-pair
@@ -54,6 +55,13 @@ if($ARGV[0] eq "-darwin") {
 }
 if($ARGV[0] eq "-openbsd") {
 	$openbsd = 1;
+	shift;
+}
+if($ARGV[0] eq "-qnx") {
+	# QNX: everything goes through libc, as on OpenBSD, but the
+	# socket calls live in libsocket.
+	$qnx = 1;
+	$libc = 1;
 	shift;
 }
 if($ARGV[0] eq "-netbsd") {
@@ -86,6 +94,30 @@ if($ARGV[0] =~ /^-/) {
 if($libc) {
 	$extraimports = 'import "internal/abi"';
 }
+
+# QNX functions that are in libsocket.so.3 rather than libc.so.3.
+# QNX has no SA_RESTART: a signal interrupts any call that is a message
+# to a resource manager (socket, bind, fcntl, open, ...) with EINTR, even
+# with SA_RESTART set, and Go's handlers rely on it. So on qnx each
+# wrapper retries on EINTR, except the calls SA_RESTART would not
+# restart either: those that wait with a timeout (Nanosleep, Select), and
+# connect, which carries on asynchronously once interrupted (internal/poll
+# treats its EINTR like EINPROGRESS). close is never retried: the
+# descriptor may be gone already. exit does not return. spawn may have
+# created the child before it was interrupted.
+my %qnx_norestart = map { $_ => 1 } qw(
+	closeFD
+	Nanosleep
+	Select
+	connect
+	exit
+	spawn
+);
+
+my %qnx_libsocket = map { $_ => 1 } qw(
+	accept bind connect getpeername getsockname getsockopt listen
+	recvfrom recvmsg sendmsg sendto setsockopt shutdown socket socketpair
+);
 if($darwin) {
 	$extraimports .= "\nimport \"runtime\"";
 }
@@ -192,7 +224,7 @@ while(<>) {
 			$text .= "\n";
 			push @args, "uintptr(_p$n)", "uintptr(len($name))";
 			$n++;
-		} elsif($type eq "int64" && ($openbsd || $netbsd)) {
+		} elsif($type eq "int64" && ($openbsd || $netbsd || $qnx)) {
 			if (!$libc) {
 				push @args, "0";
 			}
@@ -266,7 +298,7 @@ while(<>) {
 		print STDERR "$ARGV:$.: too many arguments to system call\n";
 	}
 
-	if ($darwin || ($openbsd && $libc)) {
+	if ($darwin || ($openbsd && $libc) || $qnx) {
 		# Use extended versions for calls that generate a 64-bit result.
 		my ($name, $type) = parseparam($out[0]);
 		if ($type eq "int64" || ($type eq "uintptr" && $_32bit eq "")) {
@@ -349,6 +381,11 @@ while(<>) {
 			$text .= "\t$ret[0], $ret[1], $ret[2] := $call\n";
 		}
 	}
+	if ($qnx && $do_errno && !exists $qnx_norestart{$func}) {
+		$text .= "\tfor e1 == EINTR {\n";
+		$text .= "\t\t$ret[0], $ret[1], $ret[2] = $call\n";
+		$text .= "\t}\n";
+	}
 	$text .= $body;
 
 	if ($plan9 && $ret[2] eq "e1") {
@@ -372,6 +409,9 @@ while(<>) {
 			my $libc = "libc.so";
 			if ($darwin) {
 				$libc = "/usr/lib/libSystem.B.dylib";
+			}
+			if ($qnx) {
+				$libc = exists $qnx_libsocket{$basename} ? "libsocket.so.3" : "libc.so.3";
 			}
 			$text .= "//go:cgo_import_dynamic $funcname $basename \"$libc\"\n\n";
 		}
