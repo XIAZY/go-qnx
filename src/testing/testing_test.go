@@ -1267,6 +1267,11 @@ func TestBenchmarkBLoopIterationCorrect(t *testing.T) {
 	}
 
 	re := regexp.MustCompile(`BenchmarkBLoopPrint(-[0-9]+)?\s+2\s+[0-9]+\s+ns/op`)
+	if runtime.GOOS == "qnx" {
+		// QNX 6.5's clock has 1 ms resolution, so the two iterations
+		// usually take 0 ns, and no ns/op is printed.
+		re = regexp.MustCompile(`BenchmarkBLoopPrint(-[0-9]+)?\s+2(\s+[0-9]+\s+ns/op)?\s`)
+	}
 	if !re.Match(out) {
 		t.Error("missing benchmark output")
 	}
