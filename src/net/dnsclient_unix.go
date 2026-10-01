@@ -442,6 +442,12 @@ func (conf *resolverConfig) tryUpdate(name string) {
 		//
 		// The Windows implementation of dnsReadConfig (called
 		// below) ignores the name.
+	case "qnx":
+		// The configuration usually lives in _CS_RESOLVE,
+		// which has no modification time.
+		if !qnxResolvConfChanged(name, conf.dnsConfig.Load()) {
+			return
+		}
 	default:
 		var mtime time.Time
 		if fi, err := os.Stat(name); err == nil {

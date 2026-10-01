@@ -151,7 +151,7 @@ func testBuffer_writeTo(t *testing.T, chunks int, useCopy bool) {
 
 		var wantSum int
 		switch runtime.GOOS {
-		case "aix", "android", "darwin", "ios", "dragonfly", "freebsd", "illumos", "linux", "netbsd", "openbsd", "solaris":
+		case "aix", "android", "darwin", "ios", "dragonfly", "freebsd", "illumos", "linux", "netbsd", "openbsd", "qnx", "solaris":
 			var wantMinCalls int
 			wantSum = want.Len()
 			v := chunks

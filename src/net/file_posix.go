@@ -18,17 +18,21 @@ func newFileFD(f *os.File) (*netFD, error) {
 		return nil, err
 	}
 	family := syscall.AF_UNSPEC
+	poll.SockRLock()
 	sotype, err := syscall.GetsockoptInt(s, syscall.SOL_SOCKET, _SO_TYPE)
 	if err != nil {
 		poll.CloseFunc(s)
+		poll.SockRUnlock()
 		return nil, os.NewSyscallError("getsockopt", err)
 	}
 	lsa, err := syscall.Getsockname(s)
 	if err != nil {
 		poll.CloseFunc(s)
+		poll.SockRUnlock()
 		return nil, os.NewSyscallError("getsockname", err)
 	}
 	rsa, _ := syscall.Getpeername(s)
+	poll.SockRUnlock()
 	switch lsa.(type) {
 	case *syscall.SockaddrInet4:
 		family = syscall.AF_INET
@@ -37,7 +41,9 @@ func newFileFD(f *os.File) (*netFD, error) {
 	case *syscall.SockaddrUnix:
 		family = syscall.AF_UNIX
 	default:
+		poll.SockRLock()
 		poll.CloseFunc(s)
+		poll.SockRUnlock()
 		return nil, syscall.EPROTONOSUPPORT
 	}
 	fd := newFD(s, family, sotype, "")

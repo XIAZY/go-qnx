@@ -5,7 +5,7 @@
 // This file implements sysSocket for platforms that do not provide a fast path
 // for setting SetNonblock and CloseOnExec.
 
-//go:build aix || darwin
+//go:build aix || darwin || qnx
 
 package net
 
@@ -18,6 +18,8 @@ import (
 // Wrapper around the socket system call that marks the returned file
 // descriptor as nonblocking and close-on-exec.
 func sysSocket(family, sotype, proto int) (int, error) {
+	poll.SockRLock()
+	defer poll.SockRUnlock()
 	// See ../syscall/exec_unix.go for description of ForkLock.
 	syscall.ForkLock.RLock()
 	s, err := socketFunc(family, sotype, proto)

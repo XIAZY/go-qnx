@@ -20,8 +20,13 @@ func socket(ctx context.Context, net string, family, sotype, proto int, ipv6only
 	if err != nil {
 		return nil, err
 	}
-	if err = setDefaultSockopts(s, family, sotype, ipv6only); err != nil {
+	poll.SockRLock()
+	err = setDefaultSockopts(s, family, sotype, ipv6only)
+	if err != nil {
 		poll.CloseFunc(s)
+	}
+	poll.SockRUnlock()
+	if err != nil {
 		return nil, err
 	}
 	fd = newFD(s, family, sotype, net)
@@ -107,7 +112,10 @@ func (fd *netFD) dial(ctx context.Context, laddr, raddr sockaddr, ctrlCtxFn func
 		if lsa, err = laddr.sockaddr(fd.family); err != nil {
 			return err
 		} else if lsa != nil {
-			if err = syscall.Bind(fd.pfd.Sysfd, lsa); err != nil {
+			poll.SockRLock()
+			err = syscall.Bind(fd.pfd.Sysfd, lsa)
+			poll.SockRUnlock()
+			if err != nil {
 				return os.NewSyscallError("bind", err)
 			}
 		}
@@ -133,10 +141,15 @@ func (fd *netFD) dial(ctx context.Context, laddr, raddr sockaddr, ctrlCtxFn func
 	// 1) the one returned by the connect method, if any; or
 	// 2) the one from Getpeername, if it succeeds; or
 	// 3) the one passed to us as the raddr parameter.
+	poll.SockRLock()
 	lsa, _ = syscall.Getsockname(fd.pfd.Sysfd)
+	if crsa == nil {
+		rsa, _ = syscall.Getpeername(fd.pfd.Sysfd)
+	}
+	poll.SockRUnlock()
 	if crsa != nil {
 		fd.setAddr(fd.addrFunc()(lsa), fd.addrFunc()(crsa))
-	} else if rsa, _ = syscall.Getpeername(fd.pfd.Sysfd); rsa != nil {
+	} else if rsa != nil {
 		fd.setAddr(fd.addrFunc()(lsa), fd.addrFunc()(rsa))
 	} else {
 		fd.setAddr(fd.addrFunc()(lsa), raddr)
@@ -146,7 +159,10 @@ func (fd *netFD) dial(ctx context.Context, laddr, raddr sockaddr, ctrlCtxFn func
 
 func (fd *netFD) listenStream(ctx context.Context, laddr sockaddr, backlog int, ctrlCtxFn func(context.Context, string, string, syscall.RawConn) error) error {
 	var err error
-	if err = setDefaultListenerSockopts(fd.pfd.Sysfd); err != nil {
+	poll.SockRLock()
+	err = setDefaultListenerSockopts(fd.pfd.Sysfd)
+	poll.SockRUnlock()
+	if err != nil {
 		return err
 	}
 	var lsa syscall.Sockaddr
@@ -161,16 +177,24 @@ func (fd *netFD) listenStream(ctx context.Context, laddr sockaddr, backlog int, 
 		}
 	}
 
-	if err = syscall.Bind(fd.pfd.Sysfd, lsa); err != nil {
+	poll.SockRLock()
+	err = syscall.Bind(fd.pfd.Sysfd, lsa)
+	poll.SockRUnlock()
+	if err != nil {
 		return os.NewSyscallError("bind", err)
 	}
-	if err = listenFunc(fd.pfd.Sysfd, backlog); err != nil {
+	poll.SockRLock()
+	err = listenFunc(fd.pfd.Sysfd, backlog)
+	poll.SockRUnlock()
+	if err != nil {
 		return os.NewSyscallError("listen", err)
 	}
 	if err = fd.init(); err != nil {
 		return err
 	}
+	poll.SockRLock()
 	lsa, _ = syscall.Getsockname(fd.pfd.Sysfd)
+	poll.SockRUnlock()
 	fd.setAddr(fd.addrFunc()(lsa), nil)
 	return nil
 }
@@ -186,7 +210,10 @@ func (fd *netFD) listenDatagram(ctx context.Context, laddr sockaddr, ctrlCtxFn f
 		// multiple UDP listeners that listen on the same UDP
 		// port to join the same group address.
 		if addr.IP != nil && addr.IP.IsMulticast() {
-			if err := setDefaultMulticastSockopts(fd.pfd.Sysfd); err != nil {
+			poll.SockRLock()
+			err := setDefaultMulticastSockopts(fd.pfd.Sysfd)
+			poll.SockRUnlock()
+			if err != nil {
 				return err
 			}
 			addr := *addr
@@ -211,13 +238,18 @@ func (fd *netFD) listenDatagram(ctx context.Context, laddr sockaddr, ctrlCtxFn f
 			return err
 		}
 	}
-	if err = syscall.Bind(fd.pfd.Sysfd, lsa); err != nil {
+	poll.SockRLock()
+	err = syscall.Bind(fd.pfd.Sysfd, lsa)
+	poll.SockRUnlock()
+	if err != nil {
 		return os.NewSyscallError("bind", err)
 	}
 	if err = fd.init(); err != nil {
 		return err
 	}
+	poll.SockRLock()
 	lsa, _ = syscall.Getsockname(fd.pfd.Sysfd)
+	poll.SockRUnlock()
 	fd.setAddr(fd.addrFunc()(lsa), nil)
 	return nil
 }
