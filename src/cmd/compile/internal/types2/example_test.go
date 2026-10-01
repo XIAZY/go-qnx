@@ -3,9 +3,10 @@
 // license that can be found in the LICENSE file.
 
 // Only run where builders (build.golang.org) have
-// access to compiled packages for import.
+// access to compiled packages for import. QNX test machines have
+// no go tool to compile them.
 //
-//go:build !android && !ios && !js && !wasip1
+//go:build !android && !ios && !js && !qnx && !wasip1
 
 package types2_test
 

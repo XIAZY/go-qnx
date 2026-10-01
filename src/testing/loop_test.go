@@ -6,6 +6,7 @@ package testing
 
 import (
 	"bytes"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -64,7 +65,9 @@ func TestBenchmarkBLoop(t *T) {
 		t.Fatalf("benchmark ran for %s, want >= %s", bRet.T, benchTime.d)
 	}
 	// Verify that the timer is reset on the first loop, and then left alone.
-	if firstStart == initialStart {
+	// On qnx the clock advances in 1 ms ticks, so both readings can fall
+	// in the same tick.
+	if firstStart == initialStart && runtime.GOOS != "qnx" {
 		t.Errorf("b.Loop did not reset the timer")
 	}
 	if scaledStart != firstStart {
