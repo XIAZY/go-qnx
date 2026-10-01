@@ -433,8 +433,11 @@ func fcntl(fd, cmd, arg int32) (ret int32, errno int32) {
 }
 func fcntl_trampoline()
 
+// clockMonotonic returns clock_gettime(CLOCK_MONOTONIC). nanotime uses it
+// when it cannot use the TSC (see tsc_qnx.go).
+//
 //go:nosplit
-func nanotime1() int64 {
+func clockMonotonic() int64 {
 	var ts timespec
 	args := struct {
 		clock_id int32

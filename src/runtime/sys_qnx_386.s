@@ -926,3 +926,34 @@ TEXT runtime·syscall10X(SB),NOSPLIT,$0
 ok:
 	MOVL	$0, AX
 	LEAVE
+
+// dlsym returns the address, or 0.
+TEXT runtime·dlsym_trampoline(SB),NOSPLIT,$0
+	ENTER(16)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// handle
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// name
+	CALL	libc_dlsym(SB)
+	LEAVE
+
+// func qnxCpuid(eax, ecx uint32) (a, b, c, d uint32)
+TEXT runtime·qnxCpuid(SB),NOSPLIT,$0-24
+	MOVL	eax+0(FP), AX
+	MOVL	ecx+4(FP), CX
+	CPUID
+	MOVL	AX, a+8(FP)
+	MOVL	BX, b+12(FP)
+	MOVL	CX, c+16(FP)
+	MOVL	DX, d+20(FP)
+	RET
+
+// func qnxGO386Softfloat() bool
+TEXT runtime·qnxGO386Softfloat(SB),NOSPLIT,$0-1
+#ifdef GO386_softfloat
+	MOVB	$1, ret+0(FP)
+#else
+	MOVB	$0, ret+0(FP)
+#endif
+	RET
