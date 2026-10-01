@@ -12,5 +12,7 @@ func (fd *FD) SetsockoptIPMreqn(level, name int, mreq *syscall.IPMreqn) error {
 		return err
 	}
 	defer fd.decref()
+	fd.sockRLock()
+	defer fd.sockRUnlock()
 	return syscall.SetsockoptIPMreqn(fd.Sysfd, level, name, mreq)
 }
