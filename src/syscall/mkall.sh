@@ -84,6 +84,9 @@ zsysctl="zsysctl_$GOOSARCH.go"
 mksysnum=
 mktypes=
 mkasm=
+mkasserts=
+# How to run the generator programs. They always run on the build host.
+gorun="go run"
 run="sh"
 
 case "$1" in
@@ -375,6 +378,24 @@ plan9_386)
 	mksysnum="./mksysnum_plan9.sh /n/sources/plan9/sys/src/libc/9syscall/sys.h"
 	mktypes="XXX"
 	;;
+qnx_386)
+	# Generated on a non-QNX build host: CC is a C compiler for i386 QNX
+	# 6.5 with its headers, and GORUN runs the helper program on a QNX
+	# machine.
+	# 64-bit off_t, ino_t and blkcnt_t, like every other Go port. These must
+	# be set on the command line; see types_qnx.go.
+	mkerrors="$mkerrors -m32 -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	mksyscall="./mksyscall.pl -l32 -qnx"
+	mksysnum=
+	mktypes="GOARCH=$GOARCH go tool cgo -godefs -- -fsigned-char -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	# These files are generated on a non-QNX build host, so the helper
+	# programs must be built for the host, not for qnx/386. (mkpost.go
+	# only reformats for qnx.)
+	gorun="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run"
+	mkasm="$gorun mkasm.go"
+	# Check ztypes against $CC and write the C assertion file.
+	mkasserts="$gorun mkasserts_qnx.go -types types_qnx.go -ztypes ztypes_$GOOSARCH.go -o zasserts_$GOOSARCH.h -- -fsigned-char -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	;;
 solaris_amd64)
 	mksyscall="./mksyscall_libc.pl -solaris"
 	mkerrors="$mkerrors -m64"
@@ -405,7 +426,8 @@ esac
 	if [ -n "$mktypes" ]; then
 		# ztypes_$GOOSARCH.go could be erased before "go run mkpost.go" is called.
 		# Therefore, "go run" tries to recompile syscall package but ztypes is empty and it fails.
-		echo "$mktypes types_$GOOS.go |go run mkpost.go >ztypes_$GOOSARCH.go.NEW && mv ztypes_$GOOSARCH.go.NEW ztypes_$GOOSARCH.go";
+		echo "$mktypes types_$GOOS.go |$gorun mkpost.go >ztypes_$GOOSARCH.go.NEW && mv ztypes_$GOOSARCH.go.NEW ztypes_$GOOSARCH.go";
 	fi
+	if [ -n "$mkasserts" ]; then echo "$mkasserts"; fi
 	if [ -n "$mkasm" ]; then echo "$mkasm $GOOS $GOARCH"; fi
 ) | $run
