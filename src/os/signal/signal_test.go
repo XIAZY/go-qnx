@@ -880,6 +880,11 @@ func TestNotifyContextStringer(t *testing.T) {
 	defer stop()
 
 	want := `signal.NotifyContext(context.Background.WithCancel, [hangup interrupt terminated])`
+	if runtime.GOOS == "qnx" {
+		// Signal names come from the C library's strsignal, which
+		// calls SIGTERM "software termination signal" on QNX.
+		want = `signal.NotifyContext(context.Background.WithCancel, [hangup interrupt ` + syscall.SIGTERM.String() + `])`
+	}
 	if got := fmt.Sprint(c); got != want {
 		t.Errorf("c.String() = %q, want %q", got, want)
 	}
