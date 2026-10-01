@@ -51,6 +51,14 @@ cgo works when `CC` is a C compiler for i386 QNX 6.5 that supports
 with the QNX headers); the compilers of the QNX 6.5 SDP do not, so set
 `CGO_ENABLED=0` when building on QNX.
 
+On QNX 6.5, removing the name of a Unix socket, whether the socket is
+open or closed and whichever program removes it (`rm` included), can
+hang io-pkt, the network stack, until a reboot, with a small chance each
+time. Sockets without names (socketpair, unbound sockets) did not
+trigger it. Programs that create and remove many named Unix sockets
+should prefer socketpair or loopback TCP, and where they must remove a
+name, remove it while the socket is still open.
+
 ### Contributing
 
 Go is the work of thousands of contributors. We appreciate your help!
