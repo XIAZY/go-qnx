@@ -73,8 +73,9 @@ func TestConcurrentRead(t *testing.T) {
 // normal operations.
 func TestNoUrandomFallback(t *testing.T) {
 	expectFallback := false
-	if runtime.GOOS == "aix" {
-		// AIX always uses the urandom fallback.
+	if runtime.GOOS == "aix" || runtime.GOOS == "qnx" {
+		// AIX and QNX always use the urandom fallback: they have
+		// neither getrandom nor arc4random.
 		expectFallback = true
 	}
 	if os.Getenv("GO_GETRANDOM_DISABLED") == "1" {
