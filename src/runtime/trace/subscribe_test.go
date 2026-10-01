@@ -33,7 +33,8 @@ func TestSubscribers(t *testing.T) {
 
 		v := testtrace.NewValidator()
 		// These platforms can't guarantee a monotonically increasing clock reading in a short trace.
-		if runtime.GOOS == "windows" || runtime.GOARCH == "wasm" {
+		// On qnx the clock advances in 1 ms ticks.
+		if runtime.GOOS == "windows" || runtime.GOOS == "qnx" || runtime.GOARCH == "wasm" {
 			v.SkipClockSnapshotChecks()
 		}
 		// Make sure there are Sync events: at the start and end.

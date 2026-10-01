@@ -86,7 +86,9 @@ func TestAtomicAlignment(t *testing.T) {
 	// Call go/types to analyze the runtime package.
 	var info types.Info
 	info.Types = map[ast.Expr]types.TypeAndValue{}
-	conf := types.Config{Importer: importer.Default()}
+	// Check with the target's sizes: the default is 64-bit, which
+	// trips the layout assertions of 32-bit ports (defs_qnx_386.go).
+	conf := types.Config{Importer: importer.Default(), Sizes: types.SizesFor("gc", runtime.GOARCH)}
 	_, err = conf.Check("runtime", fset, files, &info)
 	if err != nil {
 		t.Fatalf("typechecking runtime failed: %v", err)

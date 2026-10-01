@@ -276,7 +276,7 @@ func TestSignalIgnoreSIGTRAP(t *testing.T) {
 
 func TestSignalDuringExec(t *testing.T) {
 	switch runtime.GOOS {
-	case "darwin", "dragonfly", "freebsd", "linux", "netbsd", "openbsd":
+	case "darwin", "dragonfly", "freebsd", "linux", "netbsd", "openbsd", "qnx":
 	default:
 		t.Skipf("skipping test on %s", runtime.GOOS)
 	}

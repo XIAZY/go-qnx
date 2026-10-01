@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !plan9 && !windows
-// +build !plan9,!windows
+//go:build !plan9 && !qnx && !windows
+// +build !plan9,!qnx,!windows
 
 // Test handling of Go-allocated signal stacks when calling from
 // C-created threads with and without signal stacks. (See issue
