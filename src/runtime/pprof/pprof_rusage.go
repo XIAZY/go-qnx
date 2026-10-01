@@ -23,6 +23,11 @@ func addMaxRSS(w io.Writer) {
 		rssToBytes = 1
 	case "illumos", "solaris":
 		rssToBytes = uintptr(syscall.Getpagesize())
+	case "qnx":
+		// QNX 6.5's getrusage leaves ru_maxrss 0: a C program read 0
+		// even after touching 20 MiB. Leave the line out rather
+		// than report a false 0.
+		return
 	default:
 		panic("unsupported OS")
 	}
