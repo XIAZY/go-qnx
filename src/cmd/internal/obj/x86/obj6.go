@@ -42,6 +42,11 @@ import (
 	"strings"
 )
 
+// QNXTLSGOffset is the offset of g in the QNX thread control block,
+// struct _thread_local_storage: its __reserved1 field. Known to the
+// runtime as tlsGOffset in os_qnx.go.
+const QNXTLSGOffset = 0x24
+
 func CanUse1InsnTLS(ctxt *obj.Link) bool {
 	if isAndroid {
 		// Android uses a global variable for the tls offset.
@@ -52,6 +57,7 @@ func CanUse1InsnTLS(ctxt *obj.Link) bool {
 		switch ctxt.Headtype {
 		case objabi.Hlinux,
 			objabi.Hplan9,
+			objabi.Hqnx,
 			objabi.Hwindows:
 			return false
 		}
@@ -191,6 +197,36 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 			q.From.Scale = 1
 			q.From.Offset = 0
 			q.To = p.To
+		}
+	}
+
+	// QNX 6.5 has no ELF TLS. The address of the current thread's
+	// control block, struct _thread_local_storage, is stored at %fs:0,
+	// and g lives in its __reserved1 field. The %fs selector refers to
+	// a per-CPU area and may change whenever the thread is dispatched,
+	// so g must be reached through the pointer, never at a fixed %fs
+	// offset. Rewrite
+	//	MOVL TLS, BX
+	//	... off(BX)(TLS*1) ...
+	// to
+	//	MOVL 0(FS), BX
+	//	... off+QNXTLSGOffset(BX) ...
+	if ctxt.Headtype == objabi.Hqnx && ctxt.Arch.Family == sys.I386 {
+		if p.As == AMOVL && p.From.Type == obj.TYPE_REG && p.From.Reg == REG_TLS && p.To.Type == obj.TYPE_REG && REG_AX <= p.To.Reg && p.To.Reg <= REG_DI {
+			p.From.Type = obj.TYPE_MEM
+			p.From.Reg = REG_FS
+			p.From.Index = REG_NONE
+			p.From.Offset = 0
+		}
+		if p.From.Type == obj.TYPE_MEM && p.From.Index == REG_TLS {
+			p.From.Index = REG_NONE
+			p.From.Scale = 0
+			p.From.Offset += QNXTLSGOffset
+		}
+		if p.To.Type == obj.TYPE_MEM && p.To.Index == REG_TLS {
+			p.To.Index = REG_NONE
+			p.To.Scale = 0
+			p.To.Offset += QNXTLSGOffset
 		}
 	}
 
