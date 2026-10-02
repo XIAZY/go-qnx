@@ -128,6 +128,12 @@ func TestTracebackSystem(t *testing.T) {
 	if runtime.GOOS == "android" {
 		t.Skip("Can't read source code for this file on Android")
 	}
+	if runtime.GOOS == "qnx" && runtime.GOARCH == "arm" {
+		// qnx/arm tests run on a device that has no source tree at the
+		// host path baked into the binary, so the traceback can't show
+		// source lines. qnx/386 hosts its own toolchain and is fine.
+		t.Skip("Can't read source code for this file on the qnx/arm device")
+	}
 
 	tests := []struct {
 		name string
