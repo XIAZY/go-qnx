@@ -1839,7 +1839,7 @@ var cgoEnabled = map[string]bool{
 	"plan9/amd64":     false,
 	"plan9/arm":       false,
 	"qnx/386":         true,
-	"qnx/arm":         false, // No runtime/cgo support yet; see gcc_qnx.c.
+	"qnx/arm":         true,
 	"solaris/amd64":   true,
 	"windows/386":     true,
 	"windows/amd64":   true,
