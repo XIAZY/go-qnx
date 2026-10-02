@@ -96,14 +96,14 @@ func SetCPUProfileRate(hz int) {
 	unlock(&cpuprof.lock)
 }
 
-// add adds the stack trace to the profile.
+// add adds the stack trace to the profile, as weight samples.
 // It is called from signal handlers and other limited environments
 // and cannot allocate memory or acquire locks that might be
 // held at the time of the signal, nor can it use substantial amounts
 // of stack.
 //
 //go:nowritebarrierrec
-func (p *cpuProfile) add(tagPtr *unsafe.Pointer, stk []uintptr) {
+func (p *cpuProfile) add(tagPtr *unsafe.Pointer, stk []uintptr, weight uint64) {
 	// Simple cas-lock to coordinate with setcpuprofilerate.
 	for !prof.signalLock.CompareAndSwap(0, 1) {
 		// TODO: Is it safe to osyield here? https://go.dev/issue/52672
@@ -114,7 +114,7 @@ func (p *cpuProfile) add(tagPtr *unsafe.Pointer, stk []uintptr) {
 		if p.numExtra > 0 || p.lostExtra > 0 || p.lostAtomic > 0 {
 			p.addExtra()
 		}
-		hdr := [1]uint64{1}
+		hdr := [1]uint64{weight}
 		// Note: write "knows" that the argument is &gp.labels,
 		// because otherwise its write barrier behavior may not
 		// be correct. See the long comment there before

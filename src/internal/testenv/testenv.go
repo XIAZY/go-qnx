@@ -547,10 +547,6 @@ func CPUProfilingBroken() bool {
 	case "plan9":
 		// Profiling unimplemented.
 		return true
-	case "qnx":
-		// QNX 6.5 has no CPU-time timers: setitimer(ITIMER_PROF) and
-		// timer_create on CPU-time clocks fail with EINVAL.
-		return true
 	case "aix":
 		// See https://golang.org/issue/45170.
 		return true

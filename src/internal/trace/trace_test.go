@@ -98,9 +98,6 @@ func TestTraceCgoCallback(t *testing.T) {
 }
 
 func TestTraceCPUProfile(t *testing.T) {
-	if runtime.GOOS == "qnx" {
-		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
-	}
 	testTraceProg(t, "cpu-profile.go", func(t *testing.T, tb, stderr []byte, _ string) {
 		// Parse stderr which has a CPU profile summary, if everything went well.
 		// (If it didn't, we shouldn't even make it here.)
