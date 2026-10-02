@@ -339,6 +339,29 @@ func pipe() (r, w int32, errno int32) {
 }
 func pipe_trampoline()
 
+// clockId returns the id of thread tid's CPU-time clock in process pid
+// (0 for this one), or -errno. QNX 6.5 can read a thread's CPU time this
+// way but has no timers on it.
+//
+//go:nosplit
+//go:cgo_unsafe_args
+func clockId(pid, tid int32) int32 {
+	return libcCall(unsafe.Pointer(abi.FuncPCABI0(clockId_trampoline)), unsafe.Pointer(&pid))
+}
+func clockId_trampoline()
+
+// clockTime reads clock id into *ns. It returns 0 or -errno.
+//
+//go:nosplit
+func clockTime(id int32, ns *int64) int32 {
+	args := struct {
+		id       int32
+		new, old unsafe.Pointer
+	}{id, nil, noescape(unsafe.Pointer(ns))}
+	return libcCall(unsafe.Pointer(abi.FuncPCABI0(clockTime_trampoline)), unsafe.Pointer(&args))
+}
+func clockTime_trampoline()
+
 // setitimerErrno is the errno of the last failed setitimer, or 0.
 var setitimerErrno int32
 
@@ -623,6 +646,8 @@ func syscall_qnxThreadSigmask() (lo, hi uint32) {
 //go:cgo_import_dynamic libc_pthread_create pthread_create "libc.so.3"
 //go:cgo_import_dynamic libc_pthread_self pthread_self "libc.so.3"
 //go:cgo_import_dynamic libc_pthread_kill pthread_kill "libc.so.3"
+//go:cgo_import_dynamic libc_ClockId_r ClockId_r "libc.so.3"
+//go:cgo_import_dynamic libc_ClockTime_r ClockTime_r "libc.so.3"
 //go:cgo_import_dynamic libc_pthread_sigmask pthread_sigmask "libc.so.3"
 //go:cgo_import_dynamic libc_sem_init sem_init "libc.so.3"
 //go:cgo_import_dynamic libc_sem_wait sem_wait "libc.so.3"

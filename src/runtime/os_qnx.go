@@ -49,6 +49,14 @@ type mOS struct {
 	qnxBlockop bool
 	// qnxInBlockop is set while the M is inside a bracketed libc call.
 	qnxInBlockop bool
+
+	// For CPU profiling (cpuprof_qnx.go). The profiling thread owns
+	// profTid, profClock and profLast; profPending is shared with the
+	// signal handler.
+	profTid     uint64
+	profClock   int32
+	profLast    int64
+	profPending atomic.Uint32
 }
 
 // sigset_all holds every signal an application may use. QNX reserves
@@ -310,27 +318,6 @@ func sigdelset(mask *sigset, i int) {
 
 //go:nosplit
 func (c *sigctxt) fixsigcode(sig uint32) {
-}
-
-// cpuProfilingUnsupported is set once starting the profiling timer has
-// failed and been reported.
-var cpuProfilingUnsupported bool
-
-func setProcessCPUProfiler(hz int32) {
-	setProcessCPUProfilerTimer(hz)
-	// QNX 6.5 has no CPU-time timers: setitimer(ITIMER_PROF) and
-	// ITIMER_VIRTUAL, and timer_create on the process and thread
-	// CPU-time clocks, all fail with EINVAL. A wall-clock timer would
-	// sample idle time and give misleading profiles, so report the
-	// failure instead of returning an empty profile silently.
-	if hz != 0 && setitimerErrno != 0 && !cpuProfilingUnsupported {
-		cpuProfilingUnsupported = true
-		print("runtime: cannot start CPU profiling: setitimer(ITIMER_PROF) failed with errno ", setitimerErrno, "; QNX 6.5 has no CPU-time timers\n")
-	}
-}
-
-func setThreadCPUProfiler(hz int32) {
-	setThreadCPUProfilerHz(hz)
 }
 
 //go:nosplit
