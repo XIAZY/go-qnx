@@ -1830,6 +1830,7 @@ var cgoEnabled = map[string]bool{
 	"plan9/amd64":     false,
 	"plan9/arm":       false,
 	"qnx/386":         true,
+	"qnx/arm":         false, // No runtime/cgo support yet; see gcc_qnx.c.
 	"solaris/amd64":   true,
 	"windows/386":     true,
 	"windows/amd64":   true,
@@ -1844,6 +1845,7 @@ var broken = map[string]bool{
 	"freebsd/riscv64": true, // Broken: go.dev/issue/76475.
 	"linux/sparc64":   true, // An incomplete port. See CL 132155.
 	"qnx/386":         true, // Not an upstream port; no Go builder tests it.
+	"qnx/arm":         true, // Not an upstream port; no Go builder tests it.
 }
 
 // List of platforms which are first class ports. See go.dev/issue/38874.
