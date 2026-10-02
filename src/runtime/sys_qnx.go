@@ -414,8 +414,8 @@ func fcntl(fd, cmd, arg int32) (ret int32, errno int32) {
 }
 func fcntl_trampoline()
 
-// clockMonotonic returns clock_gettime(CLOCK_MONOTONIC). nanotime uses it
-// when it cannot use the TSC (see tsc_qnx.go).
+// clockMonotonic returns clock_gettime(CLOCK_MONOTONIC). It is nanotime
+// on arm, and on 386 when the TSC cannot be used (see tsc_qnx_386.go).
 //
 //go:nosplit
 func clockMonotonic() int64 {
@@ -434,6 +434,24 @@ func clockMonotonic() int64 {
 	return int64(ts.tv_sec)*1e9 + int64(ts.tv_nsec)
 }
 func clock_gettime_trampoline()
+
+// syspagePtrName is static data: its users (qnxCyclesPerSec on 386,
+// qnxCPUFlags on arm) run from osinit or checkgoarm, before the heap
+// exists.
+var syspagePtrName = []byte("_syspage_ptr\x00")
+
+// dlsym looks up a symbol. The runtime uses it to find the libc global
+// _syspage_ptr, which points at the kernel's system page.
+//
+//go:nosplit
+func dlsym(handle uintptr, name *byte) uintptr {
+	args := struct {
+		handle uintptr
+		name   *byte
+	}{handle, name}
+	return uintptr(libcCall(unsafe.Pointer(abi.FuncPCABI0(dlsym_trampoline)), unsafe.Pointer(&args)))
+}
+func dlsym_trampoline()
 
 //go:nosplit
 func walltime() (int64, int32) {
@@ -678,4 +696,5 @@ func syscall_qnxThreadSigmask() (lo, hi uint32) {
 //go:cgo_import_dynamic libc_sysconf sysconf "libc.so.3"
 //go:cgo_import_dynamic libc_fcntl fcntl "libc.so.3"
 //go:cgo_import_dynamic libc_sigaction sigaction "libc.so.3"
+//go:cgo_import_dynamic libc_dlsym dlsym "libc.so.3"
 //go:cgo_import_dynamic _ _ "libc.so.3"

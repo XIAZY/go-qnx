@@ -7,5 +7,5 @@
 package runtime
 
 // qnxCheckTSC is sysmon's check of nanotime's TSC rate on qnx
-// (see tsc_qnx.go).
+// (see tsc_qnx_386.go).
 func qnxCheckTSC() {}
