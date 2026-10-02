@@ -230,31 +230,25 @@ func forkAndExecInChild(argv0 *byte, argv, envv []*byte, chroot, dir *byte, attr
 // it does not copy the parent's descriptor table and does not race with
 // other threads creating and closing descriptors. It has no way to set the
 // child's working or root directory, credentials, or controlling terminal,
-// or to restore RLIMIT_NOFILE; those use vfork. Nor does it honor
-// SPAWN_FDCLOSED: on QNX 6.5 a child slot marked closed is still open in
-// the child, so a closed descriptor in attr.Files uses vfork too. Setsid
-// with Setpgid uses vfork as well: its child calls setsid and then setpgid,
-// which fails because a session leader cannot change its process group, and
-// spawn does not document the order in which it applies the two.
+// or to restore RLIMIT_NOFILE; those use vfork. Setsid with Setpgid uses
+// vfork as well: its child calls setsid and then setpgid, which fails
+// because a session leader cannot change its process group, and spawn does
+// not document the order in which it applies the two.
 func spawnable(chroot, dir *byte, attr *ProcAttr, sys *SysProcAttr) bool {
 	if dir != nil || chroot != nil || sys.Credential != nil ||
 		sys.Setctty || sys.Noctty || sys.Foreground ||
 		(sys.Setsid && sys.Setpgid) || origRlimitNofile.Load() != nil {
 		return false
 	}
-	for _, fd := range attr.Files {
-		if fd == ^uintptr(0) {
-			return false
-		}
-	}
 	return true
 }
 
 // spawnExec starts argv0 with spawn. The child gets attr.Files as its
 // descriptors 0, 1, 2, ... and no others, whether or not they are
-// close-on-exec in the parent. spawn reports a failure to exec the
-// program itself, so the status pipe is not used: the child never has
-// its write end, and the parent reads end of file from it.
+// close-on-exec in the parent; an entry of ^uintptr(0) becomes -1,
+// SPAWN_FDCLOSED, which closes that slot in the child. spawn reports a
+// failure to exec the program itself, so the status pipe is not used: the
+// child never has its write end, and the parent reads end of file from it.
 func spawnExec(argv0 *byte, argv, envv []*byte, attr *ProcAttr, sys *SysProcAttr) (pid int, err Errno) {
 	fdMap := make([]int32, len(attr.Files))
 	for i, fd := range attr.Files {
