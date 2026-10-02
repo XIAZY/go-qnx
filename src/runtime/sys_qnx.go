@@ -218,13 +218,15 @@ func getegid() (id int32) {
 }
 func getegid_trampoline()
 
-// QNX has no SA_RESTART: a signal interrupts any call that is a message
-// to a resource manager or to procnto's memory manager with EINTR, even
-// with SA_RESTART set. mmap, munmap, posix_madvise, open, read, write,
-// pipe and fcntl below retry on EINTR, as the kernel would restart them
-// elsewhere; close is never retried, and poll, usleep, the semaphores and
-// the signal calls are left as they are. syscall's wrappers do the same
-// (see mksyscall.pl).
+// QNX has no SA_RESTART (sigaction rejects it): a signal interrupts any
+// call that is a message to a resource manager or to procnto's memory
+// manager with EINTR. QNX lets a resource manager finish the call
+// instead (ChannelCreate's _NTO_CHF_UNBLOCK), but every one measured, on
+// QNX 6.5 and on BlackBerry 10, replies EINTR. mmap, munmap,
+// posix_madvise, open, read, write, pipe and fcntl below retry on EINTR,
+// as the kernel would restart them elsewhere; close is never retried,
+// and poll, usleep, the semaphores and the signal calls are left as they
+// are. syscall's wrappers do the same (see mksyscall.pl).
 
 // mmap is used to do low-level memory allocation via mmap. Don't allow stack
 // splits, since this function (used by sysAlloc) is called in a lot of low-level
@@ -619,12 +621,12 @@ func syscall_rawSyscall10X(fn, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10 uintptr) 
 	return
 }
 
-// syscall_rawVforkExec is the heart of process creation on QNX, which
-// refuses fork in a process with more than one thread. It calls vfork on
-// the g0 stack. In the child, which shares the parent's memory, it moves
-// to the stack stk before touching memory and calls child(arg) there;
-// child must be a nosplit function that never returns (it execs or
-// exits) and never uses g. The parent's stack, which the child would
+// syscall_rawVforkExec is the heart of process creation on QNX, whose
+// fork is documented to work only in a process with one thread. It calls
+// vfork on the g0 stack. In the child, which shares the parent's memory,
+// it moves to the stack stk before touching memory and calls child(arg)
+// there; child must be a nosplit function that never returns (it execs
+// or exits) and never uses g. The parent's stack, which the child would
 // otherwise share, is left untouched. In the parent it returns the
 // child's pid, or an errno.
 //

@@ -124,10 +124,11 @@ TEXT runtime·sigfwd(SB),NOSPLIT,$0-16
 // It also preserves errno, as a signal handler must: the interrupted
 // code may be between a failing libc call and its read of errno. And it
 // saves the FPU and SSE registers with FXSAVE before calling Go and
-// restores them with FXRSTOR after: QNX 6.5 does not reliably restore
-// them when a handler returns, and Go's handler code uses X registers
-// (memmove, float conversions). The save area is on the stack sigtramp
-// calls Go on, never on a goroutine stack.
+// restores them with FXRSTOR after: QNX does not save them for the
+// interrupted code, since its sigaction documentation says "It isn't
+// safe to use floating-point operations in signal handlers", and Go's
+// handler code uses X registers (memmove, float conversions). The save
+// area is on the stack sigtramp calls Go on, never on a goroutine stack.
 TEXT runtime·sigtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 	PUSHL	BP
 	MOVL	SP, BP		// 8(BP) signo, 12(BP) info, 16(BP) context
