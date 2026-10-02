@@ -24,6 +24,19 @@ func init() {
 	if os.Getenv("GO_QNX_TRUE_HELPER") == "1" {
 		os.Exit(0)
 	}
+	// A helper process for TestQNXSpawnExtraFilesOnly: print which of the
+	// descriptors listed in the variable are open.
+	if list := os.Getenv("GO_QNX_FDS_HELPER"); list != "" {
+		var st syscall.Stat_t
+		for _, f := range strings.Fields(list) {
+			var fd int
+			fmt.Sscan(f, &fd)
+			if syscall.Fstat(fd, &st) == nil {
+				fmt.Println(fd)
+			}
+		}
+		os.Exit(0)
+	}
 	// Helper processes for TestQNXSpawnSignals. "report": say whether
 	// SIGHUP was ignored when the process started. "ignore DIR": ignore
 	// SIGHUP, start a "report" child in DIR and pass on what it says.
@@ -244,6 +257,25 @@ func TestQNXExecDirVforkFailures(t *testing.T) {
 // and ExtraFiles: descriptors 0 to 3 here, and nothing else, whether or
 // not the parent's other descriptors are close-on-exec.
 func TestQNXSpawnExtraFilesOnly(t *testing.T) {
+	// Run twice: with the test's descriptors at whatever numbers are free,
+	// and pushed above 10 on purpose. (An earlier version asked /bin/sh,
+	// which, like other Korn shells, cannot redirect from descriptors 10
+	// and up, and reported those as missing.)
+	for _, high := range []bool{false, true} {
+		if high {
+			for range 12 {
+				f, err := os.Open("/dev/null")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer f.Close()
+			}
+		}
+		testSpawnExtraFilesOnly(t)
+	}
+}
+
+func testSpawnExtraFilesOnly(t *testing.T) {
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -263,9 +295,14 @@ func TestQNXSpawnExtraFilesOnly(t *testing.T) {
 	}
 	defer syscall.Close(inherit)
 
-	script := fmt.Sprintf(`for f in 0 1 2 3 %d %d; do (exec 9<&$f) 2>/dev/null && echo $f; done; true`, cloexec.Fd(), inherit)
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	list := fmt.Sprintf("0 1 2 3 %d %d", cloexec.Fd(), inherit)
 	for _, dir := range []string{"", "/"} {
-		cmd := exec.Command("/bin/sh", "-c", script)
+		cmd := exec.Command(exe)
+		cmd.Env = append(os.Environ(), "GO_QNX_FDS_HELPER="+list)
 		cmd.Dir = dir
 		cmd.ExtraFiles = []*os.File{r}
 		out, err := cmd.Output()
@@ -279,7 +316,7 @@ func TestQNXSpawnExtraFilesOnly(t *testing.T) {
 			want = append(want, fmt.Sprint(inherit))
 		}
 		if strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Errorf("Dir %q: child has descriptors %v, want %v", dir, got, want)
+			t.Errorf("Dir %q, descriptors %s: child has %v, want %v", dir, list, got, want)
 		}
 	}
 }
