@@ -34,3 +34,8 @@ func QNXTSCInjectRate(num, den uint32, window int64) {
 
 // QNXCheckTSC runs sysmon's check of the TSC rate.
 func QNXCheckTSC() { qnxCheckTSC() }
+
+// NanotimeCallsLibc reports whether nanotime reads the clock through
+// libc's clock_gettime: when the TSC is not trusted, or sysmon has
+// switched away from it.
+func NanotimeCallsLibc() bool { return !QNXTSCOn() }
