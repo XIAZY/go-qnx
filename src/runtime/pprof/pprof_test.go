@@ -433,8 +433,6 @@ func testCPUProfile(t *testing.T, matches profileMatchFunc, f func(dur time.Dura
 		t.Skip("skipping on plan9")
 	case "wasip1":
 		t.Skip("skipping on wasip1")
-	case "qnx":
-		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
 	}
 
 	broken := testenv.CPUProfilingBroken()

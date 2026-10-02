@@ -302,9 +302,6 @@ func TestCgoPanicDeadlock(t *testing.T) {
 
 func TestCgoCCodeSIGPROF(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "qnx" {
-		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
-	}
 	if runtime.GOOS == "freebsd" && race.Enabled {
 		t.Skipf("race + cgo freebsd not supported. See https://go.dev/issue/73788.")
 	}
@@ -316,9 +313,6 @@ func TestCgoCCodeSIGPROF(t *testing.T) {
 }
 
 func TestCgoPprofCallback(t *testing.T) {
-	if runtime.GOOS == "qnx" {
-		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
-	}
 	if testing.Short() {
 		t.Skip("skipping in short mode") // takes a full second
 	}
@@ -412,9 +406,6 @@ func TestCgoTracebackContextPreemption(t *testing.T) {
 
 func TestCgoTracebackContextProfile(t *testing.T) {
 	t.Parallel()
-	if runtime.GOOS == "qnx" {
-		t.Skip("skipping on qnx: QNX 6.5 has no CPU-time timers for SIGPROF")
-	}
 	if runtime.GOOS == "freebsd" && race.Enabled {
 		t.Skipf("race + cgo freebsd not supported. See https://go.dev/issue/73788.")
 	}

@@ -545,6 +545,28 @@ TEXT runtime·setitimer_trampoline(SB),NOSPLIT,$0
 ok:
 	LEAVE
 
+TEXT runtime·clockId_trampoline(SB),NOSPLIT,$0
+	ENTER(8)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// pid
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// tid
+	CALL	libc_ClockId_r(SB)
+	LEAVE
+
+TEXT runtime·clockTime_trampoline(SB),NOSPLIT,$0
+	ENTER(16)
+	NOP	SP	// tell vet SP changed - stop checking offsets
+	MOVL	0(DX), AX
+	MOVL	AX, 0(SP)		// id
+	MOVL	4(DX), AX
+	MOVL	AX, 4(SP)		// new
+	MOVL	8(DX), AX
+	MOVL	AX, 8(SP)		// old
+	CALL	libc_ClockTime_r(SB)
+	LEAVE
+
 TEXT runtime·usleep_trampoline(SB),NOSPLIT,$0
 	ENTER(16)
 	NOP	SP	// tell vet SP changed - stop checking offsets
