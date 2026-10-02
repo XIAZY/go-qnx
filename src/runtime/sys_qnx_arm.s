@@ -93,8 +93,11 @@ TEXT runtime·sigfwd(SB),NOSPLIT,$0-16
 //
 // It preserves errno, as a signal handler must, and saves the VFP
 // registers d0-d15 and FPSCR (and d16-d31 when the CPU has them) before
-// calling Go and restores them after: QNX 6.5 does not reliably restore
-// them when a handler returns, and Go's handler code uses VFP registers.
+// calling Go and restores them after: QNX does not save them for the
+// interrupted code, since its sigaction documentation says "It isn't
+// safe to use floating-point operations in signal handlers", and Go's
+// handler code uses VFP registers. (Measured on BlackBerry 10: a handler
+// that writes d0-d31 and FPSCR changes them for the interrupted code.)
 // The save area is on the stack sigtramp calls Go on, never on a
 // goroutine stack.
 #define SIG_VFP		16		// d0-d15, 128 bytes

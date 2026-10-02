@@ -10,10 +10,12 @@ import "internal/runtime/atomic"
 
 // The network poller. Each descriptor a goroutine waits on is armed with
 // ionotify to send a pulse to a channel of ours when it is ready, and
-// netpoll receives the pulses. This avoids libc's poll, which on QNX 6.5
-// can lose a socket's readiness when the descriptors of one resource
-// manager are separated in the poll set by another's; arming each
-// descriptor separately with ionotify does not lose it.
+// netpoll receives the pulses. This avoids libc's poll, which on QNX
+// (measured on 6.5 and on BlackBerry 10) can report an open socket as
+// invalid, POLLNVAL, losing its readiness, when the descriptors of one
+// resource manager are separated in the poll set by another's; poll's
+// count then leaves that entry out. Arming each descriptor separately
+// with ionotify does not lose it.
 //
 // What QNX 6.5's ionotify does:
 //   - A descriptor has one armed event: the last arm wins. So the union
