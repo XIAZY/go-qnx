@@ -199,6 +199,13 @@ func run() (int, error) {
 				return 0, err
 			}
 		}
+		// The toolchain's bundled time zone database, at its GOROOT-relative
+		// path under the synthetic root, so time's hermetic test (which reads
+		// ../../lib/time/zoneinfo.zip, not the system zoneinfo) finds it.
+		// go_ios_exec copies it into the app bundle for the same reason.
+		if err := c.copyZoneinfo(root); err != nil {
+			return 0, err
+		}
 		// mkdir and scp ran as the login user; hand the tree to the run
 		// user so the test can write its working directory and TMPDIR.
 		// Best effort: on a filesystem without ownership the directory is
@@ -449,6 +456,35 @@ func (c *config) copyParentTestdata(rel, deviceCwd string) error {
 		}
 	}
 	return nil
+}
+
+// copyZoneinfo places the toolchain's lib/time/zoneinfo.zip at the matching
+// path under the synthetic root, so a standard-library test that reads it by a
+// GOROOT-relative path (time's initTestingZone) finds it. The file is small,
+// so it is copied unconditionally, as go_ios_exec does. A missing GOROOT or
+// file is not an error; the test then skips or fails on its own.
+func (c *config) copyZoneinfo(root string) error {
+	goBin := "go"
+	if p, err := exec.LookPath("go"); err == nil {
+		goBin = p
+	}
+	out, err := exec.Command(goBin, "env", "GOROOT").Output()
+	if err != nil {
+		return nil
+	}
+	goroot := strings.TrimSpace(string(out))
+	if goroot == "" {
+		return nil
+	}
+	local := filepath.Join(goroot, "lib", "time", "zoneinfo.zip")
+	if _, err := os.Stat(local); err != nil {
+		return nil
+	}
+	deviceDir := path.Join(root, "lib", "time")
+	if err := c.ssh2("mkdir -p " + sh(deviceDir)); err != nil {
+		return err
+	}
+	return c.scp(local, path.Join(deviceDir, "zoneinfo.zip"))
 }
 
 func (c *config) scpArgs() []string {
