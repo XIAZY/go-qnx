@@ -156,9 +156,14 @@ func TestQNXExecLargeEnvironment(t *testing.T) {
 // Close and vfork are ordered by a lock, so execs must succeed while
 // other goroutines open and close descriptors as fast as they can.
 func TestQNXExecWhileClosing(t *testing.T) {
+	// Without the lock, on a 4-CPU BlackBerry 10 device 10 runs of this
+	// test failed at exec 2 to 48 (1 to 24 vforks): about 1 vfork in 6
+	// failed, so the short count misses the bug less than 1 time in 100.
+	// On one CPU the race almost never happens (20,000 unguarded execs
+	// on a one-CPU QNX 6.5 found none), so no count catches it there.
 	n := 2000
 	if testing.Short() {
-		n = 200
+		n = 50
 	}
 	var wg sync.WaitGroup
 	stop := make(chan struct{})
