@@ -28,28 +28,48 @@ operating system and architecture, visit
 https://go.dev/doc/install/source
 for source installation instructions.
 
-### QNX Neutrino 6.5.0
+### QNX Neutrino 6.5 and BlackBerry 10
 
-This tree is Go 1.27.1 (upstream tag go1.27.1, commit 862c888e61) with a
-port to QNX Neutrino 6.5.0 on x86, `GOOS=qnx GOARCH=386`. QNX 6.5.0 SP1
-behaves the same. The port is not part of upstream Go, and cmd/dist
-lists it among the broken ports, so make.bash needs `--force` to build
-for it.
+This is a fork of Go, at https://github.com/XIAZY/go-qnx, with a port to
+QNX: QNX Neutrino 6.5.0 on x86 (`GOOS=qnx GOARCH=386`; 6.5.0 SP1 behaves
+the same) and BlackBerry 10 — BlackBerry's system derived from QNX of
+that era — on ARM (`GOOS=qnx GOARCH=arm`). The port rides on upstream
+release branches: build from `release-branch.go1.27`, and `master`
+carries the same work on the development tip. The port is not part of
+upstream Go, and cmd/dist lists it among the broken ports, so a toolchain
+that runs on QNX itself needs make.bash `--force`.
 
 To cross-compile from another system, build the toolchain for that
 system as usual and set `GOOS` and `GOARCH`:
 
 	cd src && ./make.bash
-	GOOS=qnx GOARCH=386 ../bin/go build hello.go
+	GOOS=qnx GOARCH=386 ../bin/go build hello.go              # QNX 6.5, x86
+	GOOS=qnx GOARCH=arm GOARM=7 ../bin/go build hello.go      # BlackBerry 10, ARM
 
-A toolchain that runs on QNX itself is built the same way, with
-`GOOS=qnx GOARCH=386 ./make.bash --force`, and lands in `bin/qnx_386`.
-Copy the tree to the QNX machine and use that `go` there.
+Copy the resulting binary to the target and run it there.
 
-cgo works when `CC` is a C compiler for i386 QNX 6.5 that supports
-`-std=gnu90` and the `__atomic` builtins (GCC 4.7 or later, or clang
-with the QNX headers); the compilers of the QNX 6.5 SDP do not, so set
-`CGO_ENABLED=0` when building on QNX.
+For QNX 6.5 on x86, a toolchain that runs on QNX itself is built the same
+way, with `GOOS=qnx GOARCH=386 ./make.bash --force`, and lands in
+`bin/qnx_386`; copy the tree to the QNX machine and use that `go` there.
+BlackBerry 10 cannot host the toolchain, so build for it only by
+cross-compiling, and run the binaries on the device as an ordinary,
+non-root user.
+
+cgo on QNX 6.5/x86 needs a `CC` that supports `-std=gnu90` and the
+`__atomic` builtins (GCC 4.7 or later, or clang with the QNX headers);
+the QNX 6.5 SDP compilers do not, so build with `CGO_ENABLED=0` there.
+cgo on BlackBerry 10/ARM works with the BlackBerry 10 SDK's clang as
+`CC`, targeting armv7 QNX with soft-float VFP and supplying the QNX
+startup files, libraries and compiler-rt builtins explicitly, since the
+SDK's clang has no complete QNX sysroot of its own.
+
+To run Go's own tests on a QNX device, set the ssh host of the device; the
+go command runs the test binaries there through the exec wrapper it builds
+as `bin/go_qnx_arm_exec` and uses by default for qnx/arm:
+
+	GOQNX_EXEC_SSH=<ssh-host> GOOS=qnx GOARCH=arm go test runtime
+
+See `misc/go_qnx_exec/README` for the other `GOQNX_EXEC_*` variables.
 
 On QNX 6.5, removing the name of a Unix socket, whether the socket is
 open or closed and whichever program removes it (`rm` included), can
