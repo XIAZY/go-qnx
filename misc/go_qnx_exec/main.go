@@ -28,7 +28,10 @@
 //	                    fail visibly.
 //	GOQNX_EXEC_USER     run the binary as this user with "on -u"
 //	                    (optional); some QNX configurations refuse to
-//	                    execute an untrusted file as root.
+//	                    execute an untrusted file as root. The test then
+//	                    gets HOME set to a fresh directory beside its
+//	                    TMPDIR when GOQNX_EXEC_TMPDIR is set, and no HOME
+//	                    otherwise, never the login user's.
 //	GOQNX_EXEC_STAGE    a directory to copy the binary to before the run
 //	                    directory (optional), for devices whose run
 //	                    directory cannot be written to directly.
@@ -154,10 +157,14 @@ func run() (int, error) {
 	// directory with neither.
 	cwd := c.run
 	tmp := c.run
+	home := "" // the test's HOME when it runs as GOQNX_EXEC_USER; see below
 	var perRun string
 	if c.tmpdir != "" {
 		perRun = path.Join(c.tmpdir, id)
 		tmp = path.Join(perRun, "tmp")
+		if c.user != "" {
+			home = path.Join(perRun, "home")
+		}
 		// Lay the package out at its path relative to the root (GOROOT for
 		// a standard-library package, the module root otherwise) under a
 		// synthetic "pkg" root, as go_android_exec does, so a test that
@@ -170,7 +177,11 @@ func run() (int, error) {
 		} else {
 			cwd = root
 		}
-		if err := c.ssh2("mkdir -p " + sh(cwd) + " " + sh(tmp)); err != nil {
+		dirs := sh(cwd) + " " + sh(tmp)
+		if home != "" {
+			dirs += " " + sh(home)
+		}
+		if err := c.ssh2("mkdir -p " + dirs); err != nil {
 			return 0, err
 		}
 		// The package's own directory, with its testdata.
@@ -217,6 +228,17 @@ func run() (int, error) {
 		fmt.Fprintf(&b, "export %s; ", kv)
 	}
 	fmt.Fprintf(&b, "export TMPDIR=%s; ", sh(tmp))
+	// A test run as another user must not see the login user's HOME,
+	// which it may not even be able to read. The device may have no
+	// password database to look the run user's home up in, so give it a
+	// home of its own in the per-run directory, or none at all.
+	if c.user != "" {
+		if home != "" {
+			fmt.Fprintf(&b, "export HOME=%s; ", sh(home))
+		} else {
+			b.WriteString("unset HOME; ")
+		}
+	}
 	fmt.Fprintf(&b, "%s", sh(runBin))
 	for _, a := range args {
 		fmt.Fprintf(&b, " %s", sh(a))

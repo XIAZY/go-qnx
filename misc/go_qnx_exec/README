@@ -26,7 +26,10 @@ about a particular machine is stored here:
 	                    real directory or their testdata fail.
 	GOQNX_EXEC_USER     run the binary as this user with "on -u"
 	                    (optional); some QNX configurations refuse to
-	                    execute an untrusted file as root.
+	                    execute an untrusted file as root. The test then
+	                    gets HOME set to a fresh directory beside its
+	                    TMPDIR when GOQNX_EXEC_TMPDIR is set, and no HOME
+	                    otherwise, never the login user's.
 	GOQNX_EXEC_STAGE    a directory to copy the binary to before the run
 	                    directory (optional), for devices whose run
 	                    directory cannot be written to directly.
