@@ -396,6 +396,26 @@ qnx_386)
 	# Check ztypes against $CC and write the C assertion file.
 	mkasserts="$gorun mkasserts_qnx.go -types types_qnx.go -ztypes ztypes_$GOOSARCH.go -o zasserts_$GOOSARCH.h -- -fsigned-char -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
 	;;
+qnx_arm)
+	# Generated on a non-QNX build host from the QNX 6.5 ARM headers (the
+	# oldest supported system): CC is a C compiler for ARM QNX 6.5 with
+	# those headers, and GORUN runs the helper program on a QNX machine.
+	# 64-bit off_t, ino_t and blkcnt_t, as on every Go port; set on the
+	# command line (see types_qnx.go). ARM aligns 64-bit fields to 8
+	# bytes, so struct offsets differ from qnx/386 even where the fields
+	# are the same; mkasserts checks them against the headers.
+	# The errors[] and signals[] string tables in zerrors are strerror and
+	# signal names for numbers that do not depend on the CPU, so they are
+	# generated on a QNX 6.5 machine of any architecture (they equal the
+	# qnx/386 tables).
+	mkerrors="$mkerrors -marm -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	mksyscall="./mksyscall.pl -l32 -qnx -arm"
+	mksysnum=
+	mktypes="GOARCH=$GOARCH go tool cgo -godefs -- -fsigned-char -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	gorun="GOOS=$(go env GOHOSTOS) GOARCH=$(go env GOHOSTARCH) go run"
+	mkasm="$gorun mkasm.go"
+	mkasserts="$gorun mkasserts_qnx.go -types types_qnx.go -ztypes ztypes_$GOOSARCH.go -o zasserts_$GOOSARCH.h -- -fsigned-char -D_FILE_OFFSET_BITS=64 -D_QNX_SOURCE"
+	;;
 solaris_amd64)
 	mksyscall="./mksyscall_libc.pl -solaris"
 	mkerrors="$mkerrors -m64"
