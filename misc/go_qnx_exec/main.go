@@ -128,7 +128,10 @@ func run() (int, error) {
 
 	bin := os.Args[1]
 	args := os.Args[2:]
-	id := fmt.Sprintf("go_qnx_exec-%d", os.Getpid())
+	// Keep id short: it becomes a path component of every test's TMPDIR, and
+	// a test that binds a Unix socket there has only sun_path's ~104 bytes to
+	// work with. It need only be unique among concurrent runs on the device.
+	id := fmt.Sprintf("gq%d", os.Getpid())
 
 	runBin := path.Join(c.run, id)
 	pidFile := path.Join(c.run, id+".pid")
