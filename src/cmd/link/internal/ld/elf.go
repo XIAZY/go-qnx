@@ -206,8 +206,8 @@ func Elfinit(ctxt *Link) {
 	// 32-bit architectures
 	case sys.ARM, sys.MIPS:
 		if ctxt.Arch.Family == sys.ARM {
-			// we use EABI on linux/arm, freebsd/arm, netbsd/arm.
-			if ctxt.HeadType == objabi.Hlinux || ctxt.HeadType == objabi.Hfreebsd || ctxt.HeadType == objabi.Hnetbsd {
+			// we use EABI on linux/arm, freebsd/arm, netbsd/arm, qnx/arm.
+			if ctxt.HeadType == objabi.Hlinux || ctxt.HeadType == objabi.Hfreebsd || ctxt.HeadType == objabi.Hnetbsd || ctxt.HeadType == objabi.Hqnx {
 				// We set a value here that makes no indication of which
 				// float ABI the object uses, because this is information
 				// used by the dynamic linker to compare executables and
