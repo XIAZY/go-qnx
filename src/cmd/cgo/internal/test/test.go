@@ -354,6 +354,11 @@ const struct { int a; } *issue4857() { return (void *)0; }
 #cgo CFLAGS: -DCOMMON_VALUE=123
 #cgo windows CFLAGS: -DIS_WINDOWS=1
 #cgo !windows CFLAGS: -DIS_WINDOWS=0
+// QNX's headers (_pack64.h, _packpop.h) push and pop #pragma pack across
+// include boundaries; clang warns under -Wpragma-pack, which the -Werror
+// above turns into an error. The warning is clang's -- GCC has no such
+// warning and silently ignores the flag.
+#cgo qnx CFLAGS: -Wno-pragma-pack
 int common = COMMON_VALUE;
 int is_windows = IS_WINDOWS;
 
