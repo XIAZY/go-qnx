@@ -129,6 +129,9 @@ func TestLocationNames(t *testing.T) {
 }
 
 func TestLoadLocationFromTZData(t *testing.T) {
+	// Reads the time zone database from GOROOT (GorootZoneSource), which is
+	// absent when the test binary runs off the build machine.
+	testenv.MustHaveSource(t)
 	undo := time.DisablePlatformSources()
 	defer undo()
 

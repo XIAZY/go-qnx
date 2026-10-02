@@ -1037,6 +1037,7 @@ func TestStdlibLowercase(t *testing.T) {
 
 // TestFindImports tests that findImports works.  See #43249.
 func TestFindImports(t *testing.T) {
+	testenv.MustHaveSource(t)
 	imports, err := findImports("go/build")
 	if err != nil {
 		t.Fatal(err)

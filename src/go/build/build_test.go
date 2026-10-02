@@ -133,9 +133,7 @@ func TestMultiplePackageImport(t *testing.T) {
 }
 
 func TestLocalDirectory(t *testing.T) {
-	if runtime.GOOS == "ios" {
-		t.Skipf("skipping on %s/%s, no valid GOROOT", runtime.GOOS, runtime.GOARCH)
-	}
+	testenv.MustHaveSource(t) // resolves the working directory against $GOROOT/src; also skips ios
 
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -425,9 +423,7 @@ func TestMatchFile(t *testing.T) {
 }
 
 func TestImportCmd(t *testing.T) {
-	if runtime.GOOS == "ios" {
-		t.Skipf("skipping on %s/%s, no valid GOROOT", runtime.GOOS, runtime.GOARCH)
-	}
+	testenv.MustHaveGoBuild(t) // Import shells out to "go list"; also skips ios
 
 	p, err := Import("cmd/internal/objfile", "", 0)
 	if err != nil {

@@ -1656,9 +1656,7 @@ func TestDriveLetterInEvalSymlinks(t *testing.T) {
 }
 
 func TestBug3486(t *testing.T) { // https://golang.org/issue/3486
-	if runtime.GOOS == "ios" {
-		t.Skipf("skipping on %s/%s", runtime.GOOS, runtime.GOARCH)
-	}
+	testenv.MustHaveSource(t) // reads $GOROOT/src; also skips ios
 	root := filepath.Join(testenv.GOROOT(t), "src", "unicode")
 	utf16 := filepath.Join(root, "utf16")
 	utf8 := filepath.Join(root, "utf8")
