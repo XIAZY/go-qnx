@@ -6,9 +6,12 @@ package runtime_test
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"runtime"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -82,4 +85,81 @@ func TestNetpollPipeMetButFull(t *testing.T) {
 		t.Fatalf("write after the drain: %v", err)
 	}
 	t.Logf("write finished %v after the drain began", time.Since(start))
+}
+
+// TestNetpollPipePingPong passes a byte back and forth over two pipes
+// many times. A round trip whose read waits after a "met" arm goes
+// through the TRANARM and recheck path; the recheck makes the reader
+// ready inside netpoll, and netpoll must not then block in its receive
+// with that goroutine in hand. It did, and the round trip stalled until
+// some unrelated pulse arrived: forever, when no timer is running.
+//
+// So the test runs no Go timer at all: a watchdog on its own thread,
+// sleeping with Nanosleep, fails the test if a round trip takes longer
+// than 2 seconds (a normal one takes a few milliseconds at most).
+//
+// Without the fix it failed 10 runs out of 10 on a BlackBerry 10 device,
+// whose CLOCK_MONOTONIC ticks every millisecond, at round trip 17 to
+// 1235 (9 of the 10 within the short count), and 0 out of 10 on a
+// one-CPU QNX 6.5 machine, where nanotime has sub-microsecond
+// resolution and a recheck is rarely already due when netpoll starts.
+func TestNetpollPipePingPong(t *testing.T) {
+	r1, w1, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r1.Close()
+	defer w1.Close()
+	r2, w2, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r2.Close()
+	defer w2.Close()
+
+	go func() {
+		buf := make([]byte, 1)
+		for {
+			if _, err := io.ReadFull(r1, buf); err != nil {
+				return
+			}
+			if _, err := w2.Write(buf); err != nil {
+				return
+			}
+		}
+	}()
+
+	n := 3000
+	if testing.Short() {
+		n = 1000
+	}
+	var trip, started atomic.Int64 // round trip in progress, and its start
+	var done atomic.Bool
+	watchdogDone := make(chan struct{})
+	go func() {
+		defer close(watchdogDone)
+		runtime.LockOSThread()
+		ts := syscall.Timespec{Nsec: 100e6}
+		for !done.Load() {
+			syscall.Nanosleep(&ts, nil)
+			if s := started.Load(); s != 0 && time.Now().UnixNano()-s > 2e9 {
+				panic(fmt.Sprintf("TestNetpollPipePingPong: round trip %d of %d stalled for over 2 s", trip.Load(), n))
+			}
+		}
+	}()
+
+	buf := make([]byte, 1)
+	for i := range n {
+		trip.Store(int64(i + 1))
+		started.Store(time.Now().UnixNano())
+		if _, err := w1.Write(buf); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.ReadFull(r2, buf); err != nil {
+			t.Fatal(err)
+		}
+		started.Store(0)
+	}
+	done.Store(true)
+	<-watchdogDone
 }

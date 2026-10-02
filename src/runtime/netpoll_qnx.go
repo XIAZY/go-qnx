@@ -264,6 +264,12 @@ func netpoll(delay int64) (gList, int32) {
 	if next := pulseRunRechecks(&toRun, &delta); next > 0 && (delay < 0 || next < delay) {
 		delay = next
 	}
+	// If that made goroutines ready, take only what is already queued:
+	// a thread blocked in the receive below would hold them, out of
+	// every other thread's sight, until some unrelated pulse arrived.
+	if !toRun.empty() {
+		delay = 0
+	}
 	var p qnxPulse
 	for i := 0; i < pulseBatch; i++ {
 		// The first receive waits as long as delay says; the others
