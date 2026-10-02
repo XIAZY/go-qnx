@@ -120,6 +120,18 @@ var sysdir = func() *sysDir {
 				"CONTRIBUTING.md",
 			},
 		}
+	case "qnx":
+		// /etc, /dev and /usr can be empty, symlinked, or unreadable under
+		// the application sandbox on some QNX systems (BlackBerry 10). The
+		// boot image at /proc/boot is readable on both QNX 6.5 and
+		// BlackBerry 10; its other contents are chosen by whoever built the
+		// image, but libc.so is always present, since everything links it.
+		return &sysDir{
+			"/proc/boot",
+			[]string{
+				"libc.so",
+			},
+		}
 	}
 	return &sysDir{
 		"/etc",
@@ -628,7 +640,9 @@ func TestReaddirnamesOneAtATime(t *testing.T) {
 	switch runtime.GOOS {
 	case "android":
 		dir = "/system/bin"
-	case "ios", "wasip1":
+	case "ios", "wasip1", "qnx":
+		// /usr/bin is a symlink on some QNX systems (BlackBerry 10); use the
+		// working directory, the package directory, which is large enough.
 		wd, err := Getwd()
 		if err != nil {
 			t.Fatal(err)
@@ -1678,7 +1692,11 @@ func TestChdirAndGetwd(t *testing.T) {
 		dirs = []string{"/system/bin"}
 	case "plan9":
 		dirs = []string{"/", "/usr"}
-	case "ios", "windows", "wasip1":
+	case "ios", "windows", "wasip1", "qnx":
+		// On these systems the usual absolute directories are symlinks,
+		// special filesystems that don't support fchdir, or absent (on QNX,
+		// e.g. BlackBerry 10, /usr and /tmp are symlinks, and fchdir on /dev
+		// or /proc does not land there), so use temporary directories.
 		dirs = nil
 		for _, dir := range []string{t.TempDir(), t.TempDir()} {
 			// Expand symlinks so path equality tests work.
