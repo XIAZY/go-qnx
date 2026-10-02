@@ -99,7 +99,15 @@ func TestQNXUnixRelativeNameAtRoot(t *testing.T) {
 // test and a machine that must be rebooted.
 func TestQNXUnlinkWhileSocketCalls(t *testing.T) {
 	const rounds = 300
-	dir := t.TempDir()
+	// Use the shortest possible directory name rather than t.TempDir(), whose
+	// path embeds this long test name: the socket paths below must fit in
+	// sun_path (~104 bytes), and the Go test wrapper's TMPDIR can already be
+	// deep. This mirrors net's own testUnixAddr.
+	dir, err := os.MkdirTemp("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
 	errc := make(chan error, 4)
 	for g := 0; g < 2; g++ {
 		go func() {
