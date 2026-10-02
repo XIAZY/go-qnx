@@ -16,11 +16,14 @@ about a particular machine is stored here:
 	                    from; it must permit execution. Default /tmp.
 	GOQNX_EXEC_TMPDIR   a directory on a real filesystem that the run
 	                    user can write (optional). When set, each run
-	                    gets a subdirectory holding a copy of the test's
-	                    package directory (testdata included) as the
-	                    working directory, with the test's TMPDIR beside
-	                    it. Without it, tests that need a real directory
-	                    or their testdata fail.
+	                    gets a subdirectory holding the test's package
+	                    directory, laid out at its path relative to the
+	                    root (GOROOT or the module root) with the testdata
+	                    of every parent copied too, as the working
+	                    directory, with the test's TMPDIR beside it. This
+	                    matches go_android_exec, so a test that reads
+	                    ../testdata finds it. Without it, tests that need a
+	                    real directory or their testdata fail.
 	GOQNX_EXEC_USER     run the binary as this user with "on -u"
 	                    (optional); some QNX configurations refuse to
 	                    execute an untrusted file as root.
