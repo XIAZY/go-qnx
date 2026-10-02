@@ -196,6 +196,11 @@ func netpollWaitDone(pd *pollDesc, mode int) {
 // between the writer's EAGAIN and its arm, and then waits for the
 // writer, no further read comes. The recheck covers that, at the cost of
 // at most one wake a millisecond while a descriptor stays in this state.
+// The recheck also covers a TRANARM that fails: io-pkt and the pty
+// driver answer EBUSY to a TRANARM that would replace a pending arm, as
+// when a reader's POLLARM is armed and the writer comes back here
+// (measured on QNX 6.5 and on BlackBerry 10); the recheck wakes the
+// writer all the same.
 //
 // While a pipe stays full the arms alternate: POLLARM answered "met" (a
 // self-pulse), then TRANARM and a recheck, about 3 ms a cycle once the
