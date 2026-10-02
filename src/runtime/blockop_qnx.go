@@ -30,15 +30,22 @@ import (
 // same as an exit; and GOTRACEBACK=crash, whose abort raises SIGABRT
 // instead of calling exit.
 
+// Only the libc call itself is counted, between entersyscall and
+// exitsyscall in syscall_syscall, so that it is uncounted as soon as it
+// returns. Were it counted until qnxBlockopEnd, a call that had returned
+// would still hold up an exit that holds the only P (GOMAXPROCS=1), as
+// the caller would need that P to get from exitsyscall to
+// qnxBlockopEnd.
+//
 // The correctness argument is the order of two pairs of operations:
-// qnxBlockopBegin increments qnxBlockops and only then reads qnxExiting;
-// exit sets qnxExiting and only then reads qnxBlockops. The operations
-// are sequentially consistent, so whichever of the two comes second sees
-// the other's write: either exit sees the call in flight and waits for
-// it, or the call sees the exit and never starts. In the other order
-// both could miss each other.
+// qnxBlockopCallStart increments qnxBlockops and only then reads
+// qnxExiting; exit sets qnxExiting and only then reads qnxBlockops. The
+// operations are sequentially consistent, so whichever of the two comes
+// second sees the other's write: either exit sees the call in flight and
+// waits for it, or the call sees the exit and never starts. In the other
+// order both could miss each other.
 var (
-	// qnxBlockops counts the bracketed calls in flight.
+	// qnxBlockops counts the bracketed libc calls in flight.
 	qnxBlockops atomic.Int32
 	// qnxExiting is set once exit has started waiting for them.
 	qnxExiting atomic.Bool
@@ -78,6 +85,23 @@ func qnxBlockopBegin() {
 	sigdelset(&set, _SIGILL)
 	sigdelset(&set, _SIGTRAP)
 	sigprocmask(_SIG_BLOCK, &set, &mp.qnxBlockopMask)
+	mp.qnxBlockop = true
+}
+
+// qnxBlockopEnd is called after a bracketed call. It undoes
+// qnxBlockopBegin; signals that arrived meanwhile are delivered now.
+func qnxBlockopEnd() {
+	mp := getg().m
+	mp.qnxBlockop = false
+	sigprocmask(_SIG_SETMASK, &mp.qnxBlockopMask, nil)
+	unlockOSThread()
+}
+
+// qnxBlockopCallStart is called by syscall_syscall, in syscall state,
+// before a libc call made between qnxBlockopBegin and qnxBlockopEnd.
+//
+//go:nosplit
+func qnxBlockopCallStart(mp *m) {
 	mp.qnxInBlockop = true
 	qnxBlockops.Add(1) // before reading qnxExiting: see above
 	if qnxExiting.Load() {
@@ -86,19 +110,18 @@ func qnxBlockopBegin() {
 		qnxBlockops.Add(-1)
 		mp.qnxInBlockop = false
 		for {
-			usleep(1e6)
+			usleep_no_g(1e6)
 		}
 	}
 }
 
-// qnxBlockopEnd is called after a bracketed call. It undoes
-// qnxBlockopBegin; signals that arrived meanwhile are delivered now.
-func qnxBlockopEnd() {
-	mp := getg().m
-	qnxBlockops.Add(-1)
+// qnxBlockopCallDone is called by syscall_syscall, in syscall state,
+// as soon as the libc call returns.
+//
+//go:nosplit
+func qnxBlockopCallDone(mp *m) {
 	mp.qnxInBlockop = false
-	sigprocmask(_SIG_SETMASK, &mp.qnxBlockopMask, nil)
-	unlockOSThread()
+	qnxBlockops.Add(-1)
 }
 
 // qnxBlockopExit is called by exit before the process ends. It must not
