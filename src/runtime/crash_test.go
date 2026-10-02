@@ -210,11 +210,6 @@ func buildTestProg(t *testing.T, binary string, flags ...string) (string, error)
 }
 
 func TestVDSO(t *testing.T) {
-	if runtime.GOOS == "qnx" {
-		// SignalInVDSO profiles the CPU, which needs SIGPROF from a
-		// CPU-time timer; QNX 6.5 has none.
-		t.Skip("qnx has no CPU-time timers")
-	}
 	t.Parallel()
 	output := runTestProg(t, "testprog", "SignalInVDSO")
 	want := "success\n"
@@ -857,8 +852,6 @@ func TestTimePprof(t *testing.T) {
 	switch runtime.GOOS {
 	case "aix", "darwin", "illumos", "openbsd", "solaris":
 		t.Skipf("skipping on %s because nanotime calls libc", runtime.GOOS)
-	case "qnx":
-		t.Skip("skipping on qnx because nanotime calls libc and there are no CPU-time timers for SIGPROF")
 	}
 	if race.Enabled || asan.Enabled || msan.Enabled {
 		t.Skip("skipping on sanitizers because the sanitizer runtime is external code")
