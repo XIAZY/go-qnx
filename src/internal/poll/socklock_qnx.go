@@ -38,6 +38,10 @@ import (
 // many named Unix sockets should prefer socketpair or loopback TCP, and
 // where they must remove a name, remove it while the socket is open.
 //
+// io-pkt keeps every socket name until it is removed, closed sockets'
+// included, about a thousand at most; after that, bind fails with
+// EMFILE. It also lets a second socket bind a name that is in use.
+//
 // Only the system call itself is covered, never a wait for readiness in
 // the poller: a non-blocking socket call returns at once, so an unlink
 // waits for at most one system call on each other socket. A socket made
@@ -75,8 +79,17 @@ func SockRUnlock() { qnxSockLock.RUnlock() }
 
 // UnlinkSocket removes the name of a Unix socket, with no other socket
 // call of this process in progress.
+//
+// The unlink is also bracketed against signals and exit, as io-pkt can
+// crash if the caller stops waiting for it; see runtime/blockop_qnx.go.
 func UnlinkSocket(path string) error {
 	qnxSockLock.Lock()
 	defer qnxSockLock.Unlock()
+	qnxBlockopBegin()
+	defer qnxBlockopEnd()
 	return syscall.Unlink(path)
 }
+
+// Implemented in the runtime package (runtime/blockop_qnx.go).
+func qnxBlockopBegin()
+func qnxBlockopEnd()

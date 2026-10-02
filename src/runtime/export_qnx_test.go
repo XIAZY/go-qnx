@@ -37,3 +37,23 @@ func QNXCheckTSC() { qnxCheckTSC() }
 func NetpollPulseCounts() (self, tran, recheck uint64) {
 	return pulseNSelf.Load(), pulseNTran.Load(), pulseNRecheck.Load()
 }
+
+// QNXBlockopBegin and QNXBlockopEnd bracket a call as io-pkt's blockop
+// callers are bracketed (see blockop_qnx.go), to simulate one in flight.
+func QNXBlockopBegin() { qnxBlockopBegin() }
+func QNXBlockopEnd()   { qnxBlockopEnd() }
+
+// QNXBlockops returns how many bracketed calls are in flight.
+func QNXBlockops() int32 { return qnxBlockops.Load() }
+
+// QNXThreadSigmask returns the calling thread's signal mask.
+func QNXThreadSigmask() [2]uint32 {
+	var old sigset
+	sigprocmask(_SIG_BLOCK, nil, &old)
+	return old.__bits
+}
+
+// QNXSigBit reports whether signal sig is in mask.
+func QNXSigBit(mask [2]uint32, sig int) bool {
+	return mask[(sig-1)/32]&(1<<((sig-1)%32)) != 0
+}

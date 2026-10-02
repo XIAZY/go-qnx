@@ -59,6 +59,19 @@ trigger it. Programs that create and remove many named Unix sockets
 should prefer socketpair or loopback TCP, and where they must remove a
 name, remove it while the socket is still open.
 
+On QNX 6.5, io-pkt crashes, taking every socket on the machine with it
+until a reboot, if a process stops waiting for one of a few Unix socket
+calls before it returns: binding a socket to a name, removing a socket
+name, and sending descriptors (SCM_RIGHTS). A process that exits with
+such a call in progress on another thread is enough, and so is a signal
+that interrupts the call. Go programs block signals during these calls
+and wait up to a second for them at exit. Not covered: C code (including
+through cgo); a process killed from outside, which has not been tested
+but presumably behaves like an exit; and a crash with
+`GOTRACEBACK=crash`, which ends the process with SIGABRT instead of an
+exit. io-pkt also keeps every socket name until it is removed, about
+a thousand at most; after that, binding to a name fails with EMFILE.
+
 On QNX 6.5 under KVM with 2 virtual CPUs, the SMP kernel can hang, with
 every CPU busy and no I/O completing, until a reboot, when processes are
 created while the disk is being flushed. A native Go build is such a
