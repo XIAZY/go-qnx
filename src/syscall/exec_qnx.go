@@ -11,10 +11,11 @@ import (
 	"unsafe"
 )
 
-// QNX 6.5 refuses fork() in a multithreaded process, and every Go
-// program has several threads, so processes are created with vfork and
-// execve, as with CLONE_VFORK on Linux. spawn() and posix_spawn() are not
-// an option: neither can change the child's working directory.
+// QNX documents fork() as supported only in single-threaded processes
+// (it fails with ENOSYS on QNX 6.5), and every Go program has several
+// threads, so processes are created with QNX's spawn() where it can
+// express the request (see spawnable), and otherwise with vfork and
+// execve, as with CLONE_VFORK on Linux.
 
 type SysProcAttr struct {
 	Chroot     string      // Chroot.
@@ -157,9 +158,10 @@ func forkAndExecInChild(argv0 *byte, argv, envv []*byte, chroot, dir *byte, attr
 	}
 	defer Munmap(stk)
 
-	// QNX's vfork duplicates the parent's descriptors one by one, and fails
-	// with EBADF, creating no child, if another thread creates or closes
-	// one meanwhile. Close waits for closeLock, so the vfork holds it.
+	// QNX documents vfork as not thread-safe. In practice it duplicates
+	// the parent's descriptors one by one, and fails with EBADF, creating
+	// no child, if another thread creates or closes one meanwhile. Close
+	// waits for closeLock, so the vfork holds it.
 	// Descriptors that other threads create, or the runtime closes without
 	// Close, can still make it fail. In a loop of vforks on QNX 6.5:
 	//
