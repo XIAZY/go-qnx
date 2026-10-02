@@ -33,11 +33,14 @@ func TestNetpollPipeMetButFull(t *testing.T) {
 	defer w.Close()
 
 	// Fill the pipe with 19-byte writes. 19 divides no power of two, so
-	// a few bytes stay free.
+	// a few bytes stay free. The pipe is full when one write has waited
+	// 50 ms, so the deadline is set afresh for each write: one deadline
+	// for the whole loop can pass before the pipe fills on a slow machine
+	// (it did under emulation, at 4,142 bytes).
 	msg := make([]byte, 19)
-	w.SetWriteDeadline(time.Now().Add(50 * time.Millisecond))
 	n := 0
 	for {
+		w.SetWriteDeadline(time.Now().Add(50 * time.Millisecond))
 		if _, err := w.Write(msg); err != nil {
 			if !errors.Is(err, os.ErrDeadlineExceeded) {
 				t.Fatal(err)
