@@ -376,8 +376,13 @@ func qnxChildExec(c *qnxChild) {
 		sys    = c.sys
 		pipe   = c.pipe
 		nextfd = c.nextfd
-		fd     = unsafe.Slice(c.fd, c.nfd)
+		nfd    = c.nfd
 	)
+	// The file descriptors are reached one at a time through childFd
+	// rather than a slice: the child must call nothing that can split
+	// its stack, and unsafe.Slice emits math.MulUintptr for its
+	// length-overflow check, which is a real call (not an intrinsic) on
+	// arm. childFd's index multiply is by a constant element size.
 
 	// Give every signal Go handles its default action again, before
 	// the mask is restored below: a Go handler must not run in the
@@ -467,8 +472,8 @@ func qnxChildExec(c *qnxChild) {
 		}
 	}
 
-	// Pass 1: look for fd[i] < i and move those up above len(fd)
-	// so that pass 2 won't stomp on an fd it needs later.
+	// Pass 1: look for an fd below its destination index and move it up
+	// above nfd, so that pass 2 won't stomp on an fd it needs later.
 	if pipe < nextfd {
 		_, err1 = childcall(abi.FuncPCABI0(libc_dup2_trampoline), uintptr(pipe), uintptr(nextfd), 0)
 		if err1 != 0 {
@@ -481,12 +486,12 @@ func qnxChildExec(c *qnxChild) {
 		pipe = nextfd
 		nextfd++
 	}
-	for i = 0; i < len(fd); i++ {
-		if fd[i] >= 0 && fd[i] < i {
+	for i = 0; i < nfd; i++ {
+		if *childFd(c, i) >= 0 && *childFd(c, i) < i {
 			if nextfd == pipe { // don't stomp on pipe
 				nextfd++
 			}
-			_, err1 = childcall(abi.FuncPCABI0(libc_dup2_trampoline), uintptr(fd[i]), uintptr(nextfd), 0)
+			_, err1 = childcall(abi.FuncPCABI0(libc_dup2_trampoline), uintptr(*childFd(c, i)), uintptr(nextfd), 0)
 			if err1 != 0 {
 				goto childerror
 			}
@@ -494,20 +499,20 @@ func qnxChildExec(c *qnxChild) {
 			if err1 != 0 {
 				goto childerror
 			}
-			fd[i] = nextfd
+			*childFd(c, i) = nextfd
 			nextfd++
 		}
 	}
 
-	// Pass 2: dup fd[i] down onto i.
-	for i = 0; i < len(fd); i++ {
-		if fd[i] == -1 {
+	// Pass 2: dup each fd down onto i.
+	for i = 0; i < nfd; i++ {
+		if *childFd(c, i) == -1 {
 			childcall(abi.FuncPCABI0(libc_close_trampoline), uintptr(i), 0, 0)
 			continue
 		}
-		if fd[i] == i {
+		if *childFd(c, i) == i {
 			// dup2(i, i) won't clear close-on-exec flag.
-			_, err1 = childcall(abi.FuncPCABI0(libc_fcntl_trampoline), uintptr(fd[i]), F_SETFD, 0)
+			_, err1 = childcall(abi.FuncPCABI0(libc_fcntl_trampoline), uintptr(*childFd(c, i)), F_SETFD, 0)
 			if err1 != 0 {
 				goto childerror
 			}
@@ -515,17 +520,17 @@ func qnxChildExec(c *qnxChild) {
 		}
 		// The new fd is created NOT close-on-exec,
 		// which is exactly what we want.
-		_, err1 = childcall(abi.FuncPCABI0(libc_dup2_trampoline), uintptr(fd[i]), uintptr(i), 0)
+		_, err1 = childcall(abi.FuncPCABI0(libc_dup2_trampoline), uintptr(*childFd(c, i)), uintptr(i), 0)
 		if err1 != 0 {
 			goto childerror
 		}
 	}
 
 	// By convention, we don't close-on-exec the fds we are
-	// started with, so if len(fd) < 3, close 0, 1, 2 as needed.
+	// started with, so if nfd < 3, close 0, 1, 2 as needed.
 	// Programs that know they inherit fds >= 3 will need
 	// to set them close-on-exec.
-	for i = len(fd); i < 3; i++ {
+	for i = nfd; i < 3; i++ {
 		childcall(abi.FuncPCABI0(libc_close_trampoline), uintptr(i), 0, 0)
 	}
 
@@ -562,6 +567,16 @@ childerror:
 	for {
 		childcall(abi.FuncPCABI0(libc__exit_trampoline), 253, 0, 0)
 	}
+}
+
+// childFd returns a pointer to the child's i'th file descriptor. It is
+// nosplit, and multiplies the index by a constant element size, so
+// qnxChildExec can reach the descriptors without unsafe.Slice (see
+// there).
+//
+//go:nosplit
+func childFd(c *qnxChild, i int) *int {
+	return (*int)(unsafe.Add(unsafe.Pointer(c.fd), uintptr(i)*unsafe.Sizeof(*c.fd)))
 }
 
 // forkAndExecFailureCleanup cleans up after an exec failure.
