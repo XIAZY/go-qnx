@@ -7,6 +7,16 @@
 #include "funcdata.h"
 #include "textflag.h"
 
+// openbsd and qnx run Go code through libc, which clobbers the g
+// register, so g must always be saved to thread-local storage for the
+// signal trampoline to recover it, not only under cgo.
+#ifdef GOOS_openbsd
+#define SAVE_G_ALWAYS
+#endif
+#ifdef GOOS_qnx
+#define SAVE_G_ALWAYS
+#endif
+
 // _rt0_arm is common startup code for most ARM systems when using
 // internal linking. This is the entry point for the program from the
 // kernel for an ordinary -buildmode=exe program. The stack holds the
@@ -126,7 +136,7 @@ TEXT runtime·rt0_go(SB),NOSPLIT|NOFRAME|TOPFRAME,$0
 
 	BL	runtime·emptyfunc(SB)	// fault if stack check is wrong
 
-#ifdef GOOS_openbsd
+#ifdef SAVE_G_ALWAYS
 	// Save g to TLS so that it is available from signal trampoline.
 	BL	runtime·save_g(SB)
 #endif
@@ -774,7 +784,7 @@ TEXT setg<>(SB),NOSPLIT|NOFRAME,$0-0
 	MOVW	R0, g
 
 	// Save g to thread-local storage.
-#ifdef GOOS_openbsd
+#ifdef SAVE_G_ALWAYS
 	B	runtime·save_g(SB)
 #else
 	MOVB	runtime·iscgo(SB), R0
