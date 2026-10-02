@@ -6638,7 +6638,7 @@ func sysmon() {
 		now = nanotime()
 
 		if GOOS == "qnx" {
-			qnxCheckTSC() // see tsc_qnx.go
+			qnxCheckTSC() // see tsc_qnx_386.go
 		}
 
 		// trigger libc interceptors if needed
