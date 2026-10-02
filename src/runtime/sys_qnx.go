@@ -461,7 +461,17 @@ func sigprocmask_trampoline()
 //go:cgo_unsafe_args
 func syscall_syscall(fn, a1, a2, a3 uintptr) (r1, r2, err uintptr) {
 	entersyscall()
+	// The calls bracketed against io-pkt's blockop crash (see
+	// blockop_qnx.go) all come through here.
+	mp := getg().m
+	blockop := mp.qnxBlockop
+	if blockop {
+		qnxBlockopCallStart(mp)
+	}
 	libcCall(unsafe.Pointer(abi.FuncPCABI0(syscall)), unsafe.Pointer(&fn))
+	if blockop {
+		qnxBlockopCallDone(mp)
+	}
 	exitsyscall()
 	return
 }

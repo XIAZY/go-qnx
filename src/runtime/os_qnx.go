@@ -45,7 +45,9 @@ type mOS struct {
 	delayedFaults uint32
 	// qnxBlockopMask is the signal mask that qnxBlockopEnd restores.
 	qnxBlockopMask sigset
-	// qnxInBlockop is set while the M is inside a bracketed call.
+	// qnxBlockop is set between qnxBlockopBegin and qnxBlockopEnd.
+	qnxBlockop bool
+	// qnxInBlockop is set while the M is inside a bracketed libc call.
 	qnxInBlockop bool
 }
 

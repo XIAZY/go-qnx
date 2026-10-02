@@ -139,6 +139,10 @@ func TestQNXBlockopExit(t *testing.T) {
 	}{
 		{"none", 0, 200 * time.Millisecond},
 		{"300ms", 250 * time.Millisecond, 800 * time.Millisecond},
+		// The exiting goroutine holds the only P: the call must
+		// stop counting when it returns, not when its goroutine
+		// next runs.
+		{"300ms-1P", 250 * time.Millisecond, 800 * time.Millisecond},
 		{"never", 700 * time.Millisecond, 3 * time.Second},
 	} {
 		cmd := exec.Command(exe, "-test.run=^TestQNXBlockopExit$")
@@ -171,21 +175,26 @@ func TestQNXBlockopExit(t *testing.T) {
 func qnxBlockopExitChild(mode string) {
 	in := make(chan bool)
 	switch mode {
-	case "300ms":
+	case "300ms", "300ms-1P":
+		if mode == "300ms-1P" {
+			runtime.GOMAXPROCS(1)
+		}
 		go func() {
 			runtime.QNXBlockopBegin()
 			in <- true
-			time.Sleep(300 * time.Millisecond)
+			runtime.QNXBlockopCallSleep(300000)
 			runtime.QNXBlockopEnd()
 		}()
 		<-in
+		time.Sleep(10 * time.Millisecond) // let the call start
 	case "never":
 		go func() {
 			runtime.QNXBlockopBegin()
 			in <- true
-			select {}
+			runtime.QNXBlockopCallHang()
 		}()
 		<-in
+		time.Sleep(10 * time.Millisecond)
 	}
 	os.Stdout.WriteString("exiting\n")
 	os.Exit(0)

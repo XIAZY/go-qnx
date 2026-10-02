@@ -39,9 +39,34 @@ func NetpollPulseCounts() (self, tran, recheck uint64) {
 }
 
 // QNXBlockopBegin and QNXBlockopEnd bracket a call as io-pkt's blockop
-// callers are bracketed (see blockop_qnx.go), to simulate one in flight.
+// callers are bracketed (see blockop_qnx.go).
 func QNXBlockopBegin() { qnxBlockopBegin() }
 func QNXBlockopEnd()   { qnxBlockopEnd() }
+
+// QNXBlockopCallSleep stands for a bracketed libc call that takes usec
+// microseconds, as syscall_syscall makes it. It must be called between
+// QNXBlockopBegin and QNXBlockopEnd.
+//
+//go:nosplit
+func QNXBlockopCallSleep(usec uint32) {
+	entersyscall()
+	mp := getg().m
+	qnxBlockopCallStart(mp)
+	usleep_no_g(usec)
+	qnxBlockopCallDone(mp)
+	exitsyscall()
+}
+
+// QNXBlockopCallHang stands for a bracketed libc call that never returns.
+//
+//go:nosplit
+func QNXBlockopCallHang() {
+	entersyscall()
+	qnxBlockopCallStart(getg().m)
+	for {
+		usleep_no_g(1e6)
+	}
+}
 
 // QNXBlockops returns how many bracketed calls are in flight.
 func QNXBlockops() int32 { return qnxBlockops.Load() }
