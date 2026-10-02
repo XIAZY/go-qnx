@@ -59,6 +59,12 @@ trigger it. Programs that create and remove many named Unix sockets
 should prefer socketpair or loopback TCP, and where they must remove a
 name, remove it while the socket is still open.
 
+On QNX 6.5 under KVM with 2 virtual CPUs, the SMP kernel can hang, with
+every CPU busy and no I/O completing, until a reboot, when processes are
+created while the disk is being flushed. A native Go build is such a
+load. Booting the uniprocessor kernel (`procnto-instr`) avoided it.
+Other hypervisors and real hardware have not been tested.
+
 ### Contributing
 
 Go is the work of thousands of contributors. We appreciate your help!
