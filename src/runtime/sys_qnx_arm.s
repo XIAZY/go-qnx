@@ -599,6 +599,19 @@ TEXT runtime·clockTime_trampoline(SB),NOSPLIT,$0
 	MOVW	R9, R13
 	RET
 
+// clockCycles_trampoline stores the 64-bit result of ClockCycles, which
+// libc returns in R0 (low) and R1 (high), at the pointer in R0. R4 is
+// callee-saved in the C ABI, so it keeps the pointer across the call.
+TEXT runtime·clockCycles_trampoline(SB),NOSPLIT,$0
+	MOVW	R13, R9
+	BIC	$0x7, R13
+	MOVW	R0, R4
+	BL	libc_ClockCycles(SB)
+	MOVW	R0, 0(R4)
+	MOVW	R1, 4(R4)
+	MOVW	R9, R13
+	RET
+
 TEXT runtime·usleep_trampoline(SB),NOSPLIT,$0
 	MOVW	R13, R9
 	BIC	$0x7, R13

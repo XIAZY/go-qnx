@@ -4,7 +4,10 @@
 
 package runtime
 
-import "unsafe"
+import (
+	"internal/abi"
+	"unsafe"
+)
 
 const (
 	// From <sys/syspage.h> and <arm/syspage.h> of QNX 6.5.0. These are
@@ -72,14 +75,23 @@ func checkgoarm() {
 	}
 }
 
+// cputicks returns QNX's ClockCycles, a free-running counter whose rate
+// the system page gives (cycles_per_sec). On ARM, libc emulates it with
+// a call into the kernel, which on a 19.2 MHz device took about 350 ns,
+// for a resolution of about 52 ns; nanotime here is CLOCK_MONOTONIC,
+// which advances in 1 ms ticks, too coarse to order events such as
+// debuglog's. The runtime calibrates ticks against nanotime itself and
+// does not need them synchronised across CPUs.
+//
 //go:nosplit
 func cputicks() int64 {
-	// nanotime() is a poor approximation of CPU ticks that is enough for
-	// the profiler. qnx/arm has no cheap cycle counter it can read from
-	// user space, so unlike qnx/386 (see tsc_qnx_386.go) nanotime is
-	// CLOCK_MONOTONIC.
-	return nanotime()
+	var r [2]uint32 // low, high
+	libcCall(unsafe.Pointer(abi.FuncPCABI0(clockCycles_trampoline)), unsafe.Pointer(&r))
+	return int64(uint64(r[1])<<32 | uint64(r[0]))
 }
+func clockCycles_trampoline()
+
+//go:cgo_import_dynamic libc_ClockCycles ClockCycles "libc.so.3"
 
 // nanotime1 reads CLOCK_MONOTONIC. QNX 6.5's monotonic clock advances
 // once per timer tick, 1 ms by default; qnx/arm has no user-space cycle
