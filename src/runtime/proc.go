@@ -1666,6 +1666,23 @@ func stopTheWorldWithSema(reason stwReason) worldStop {
 		throw("stopTheWorld: holding locks")
 	}
 
+	if GOOS == "qnx" {
+		// On QNX 6.5, posting a semaphore does not preempt the
+		// poster for a woken thread of the same priority, as all
+		// of Go's threads are; round-robin switches only at the
+		// end of a timeslice. With fewer CPUs than Ps, a goroutine
+		// that stops the world repeatedly then keeps the CPU from
+		// the Ms that the last start-the-world woke, and each of
+		// them finds the world stopped again when it runs: the
+		// rest of the program starves (on one CPU,
+		// TestLockOSThreadTemplateThreadRace completed about 1 run
+		// in 10). Let every thread that is ready run once between
+		// two stops of the world. This costs a sched_yield per
+		// stop-the-world, which returns at once if no thread is
+		// ready.
+		osyield()
+	}
+
 	lock(&sched.lock)
 	start := nanotime() // exclude time waiting for sched.lock from start and total time metrics.
 	sched.stopwait = gomaxprocs
