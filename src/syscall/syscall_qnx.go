@@ -382,7 +382,7 @@ type SockaddrDatalink struct {
 }
 
 //sys	accept(s int, rsa *RawSockaddrAny, addrlen *_Socklen) (fd int, err error)
-//sys	bind(s int, addr unsafe.Pointer, addrlen _Socklen) (err error)
+//sys	bindLibc(s int, addr unsafe.Pointer, addrlen _Socklen) (err error) = SYS_bind
 //sys	connect(s int, addr unsafe.Pointer, addrlen _Socklen) (err error)
 //sysnb	socket(domain int, typ int, proto int) (fd int, err error)
 //sys	getsockopt(s int, level int, name int, val unsafe.Pointer, vallen *_Socklen) (err error)
@@ -640,6 +640,12 @@ func sendmsgN(fd int, p, oob []byte, ptr unsafe.Pointer, salen _Socklen, flags i
 	}
 	msg.Iov = &iov
 	msg.Iovlen = 1
+	if len(oob) > 0 {
+		// Control data may carry descriptors (SCM_RIGHTS), which io-pkt
+		// passes on through the bracketed path; see runtime/blockop_qnx.go.
+		qnxBlockopBegin()
+		defer qnxBlockopEnd()
+	}
 	if n, err = sendmsg(fd, &msg, flags); err != nil {
 		return 0, err
 	}
@@ -756,3 +762,20 @@ func Munmap(b []byte) (err error) {
 //sysnb	pipe(p *[2]_C_int) (err error)
 //sysnb	execve(path *byte, argv **byte, envp **byte) (err error)
 //sysnb	exit(res int) (err error) = SYS__exit
+
+// Implemented in the runtime package (runtime/blockop_qnx.go): they
+// bracket the socket calls that io-pkt can crash on if the calling
+// thread stops waiting, by a signal or by an exit.
+func qnxBlockopBegin()
+func qnxBlockopEnd()
+
+// bind brackets the binding of a Unix socket to a name; see
+// runtime/blockop_qnx.go. Other families are not affected.
+func bind(s int, addr unsafe.Pointer, addrlen _Socklen) error {
+	if addrlen < 2 || (*RawSockaddr)(addr).Family != AF_UNIX {
+		return bindLibc(s, addr, addrlen)
+	}
+	qnxBlockopBegin()
+	defer qnxBlockopEnd()
+	return bindLibc(s, addr, addrlen)
+}

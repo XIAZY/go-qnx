@@ -148,6 +148,7 @@ func osyield_no_g() {
 //go:nosplit
 //go:cgo_unsafe_args
 func exit(code int32) {
+	qnxBlockopExit()
 	// libc's exit runs atexit functions and C destructors, which may
 	// call back into Go (see TestDestructorCallback). As cgocall does,
 	// tell the scheduler that this goroutine is leaving Go, so that a

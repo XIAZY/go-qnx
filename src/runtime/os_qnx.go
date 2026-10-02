@@ -43,6 +43,10 @@ type mOS struct {
 	// delayedFaults counts the consecutive synchronous faults that
 	// sigDelayedFault let go (see there).
 	delayedFaults uint32
+	// qnxBlockopMask is the signal mask that qnxBlockopEnd restores.
+	qnxBlockopMask sigset
+	// qnxInBlockop is set while the M is inside a bracketed call.
+	qnxInBlockop bool
 }
 
 // sigset_all holds every signal an application may use. QNX reserves
