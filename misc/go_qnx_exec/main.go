@@ -15,13 +15,17 @@
 //	GOQNX_EXEC_RUN      directory the binary is copied to and executed
 //	                    from; it must permit execution. Default /tmp.
 //	GOQNX_EXEC_TMPDIR   a directory on a real filesystem that the run
-//	                    user can write (optional). When set, each run
-//	                    gets a subdirectory of it holding a copy of the
-//	                    test's package directory, run as the working
-//	                    directory, with the test's TMPDIR beside it.
-//	                    Without it, the binary runs from GOQNX_EXEC_RUN
-//	                    with no package files, and tests that need a real
-//	                    directory or their testdata fail visibly.
+//	                    user can write (optional). When set, each run gets
+//	                    a subdirectory of it holding the test's package
+//	                    directory, laid out at its path relative to the
+//	                    root (GOROOT or the module root) with the testdata
+//	                    of every parent copied too, run as the working
+//	                    directory, with the test's TMPDIR beside it. This
+//	                    is the go_android_exec layout, so a test reading
+//	                    ../testdata finds it. Without it, the binary runs
+//	                    from GOQNX_EXEC_RUN with no package files, and
+//	                    tests that need a real directory or their testdata
+//	                    fail visibly.
 //	GOQNX_EXEC_USER     run the binary as this user with "on -u"
 //	                    (optional); some QNX configurations refuse to
 //	                    execute an untrusted file as root.
@@ -153,13 +157,33 @@ func run() (int, error) {
 	var perRun string
 	if c.tmpdir != "" {
 		perRun = path.Join(c.tmpdir, id)
-		cwd = path.Join(perRun, "pkg")
 		tmp = path.Join(perRun, "tmp")
+		// Lay the package out at its path relative to the root (GOROOT for
+		// a standard-library package, the module root otherwise) under a
+		// synthetic "pkg" root, as go_android_exec does, so a test that
+		// reads ../testdata finds it at the same relative path. If the
+		// layout can't be determined, fall back to a flat copy.
+		root := path.Join(perRun, "pkg")
+		rel, ok := pkgRelPath()
+		if ok {
+			cwd = path.Join(root, rel)
+		} else {
+			cwd = root
+		}
 		if err := c.ssh2("mkdir -p " + sh(cwd) + " " + sh(tmp)); err != nil {
 			return 0, err
 		}
+		// The package's own directory, with its testdata.
 		if err := c.copyTree(".", cwd); err != nil {
 			return 0, err
+		}
+		// The testdata (and go.mod/go.sum) of every parent up to the root,
+		// so a test reaching into a parent's testdata finds it. Only those
+		// names are copied, never a whole parent and never the GOROOT.
+		if ok {
+			if err := c.copyParentTestdata(rel, cwd); err != nil {
+				return 0, err
+			}
 		}
 		// mkdir and scp ran as the login user; hand the tree to the run
 		// user so the test can write its working directory and TMPDIR.
@@ -311,6 +335,93 @@ func (c *config) copyTree(localDir, remoteDir string) error {
 	}
 	if err := rx.Wait(); err != nil {
 		return fmt.Errorf("extract into %s: %v", remoteDir, err)
+	}
+	return nil
+}
+
+// pkgRelPath reports where the test's package sits relative to its root:
+// the slash path from GOROOT for a standard-library package, or from the
+// module root otherwise, e.g. "src/net". It runs the go tool found on
+// PATH, the one the go command used to invoke this wrapper, in the current
+// directory, which the go command set to the package directory. ok is
+// false when the layout can't be determined, and the caller falls back to
+// a flat copy.
+func pkgRelPath() (rel string, ok bool) {
+	goBin := "go"
+	if p, err := exec.LookPath("go"); err == nil {
+		goBin = p
+	}
+	// Fields are newline-separated: none of ImportPath, Standard, the
+	// module directory or the package directory contains a newline, and
+	// unlike NUL a newline is a legal exec argument.
+	out, err := exec.Command(goBin, "list", "-e", "-f",
+		"{{.ImportPath}}\n{{.Standard}}\n{{with .Module}}{{.Dir}}{{end}}\n{{.Dir}}").Output()
+	if err != nil {
+		return "", false
+	}
+	f := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
+	if len(f) < 4 {
+		return "", false
+	}
+	importPath, std, modDir, dir := f[0], f[1] == "true", f[2], f[3]
+	if importPath == "" || importPath == "." {
+		return "", false
+	}
+	if std {
+		return path.Join("src", importPath), true
+	}
+	if modDir != "" {
+		r, err := filepath.Rel(modDir, dir)
+		if err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+			return "", false
+		}
+		return filepath.ToSlash(r), true
+	}
+	return "", false
+}
+
+// copyParentTestdata copies the testdata directory and any go.mod/go.sum
+// of each parent of the package, up to the root, into the matching parent
+// of deviceCwd on the device. rel is the package's slash path from the
+// root, as returned by pkgRelPath, and deviceCwd is where the package
+// itself was copied; because deviceCwd is nested rel-deep under the
+// synthetic root, the ".." paths stay within it. Only testdata, go.mod and
+// go.sum are copied, never a whole parent directory.
+func (c *config) copyParentTestdata(rel, deviceCwd string) error {
+	if rel == "." {
+		return nil // the package is the root; it has no parents to copy
+	}
+	// One level per path element of rel, up to and including the root (the
+	// last iteration), so a module root's go.mod, go.sum and testdata are
+	// copied too. deviceCwd is nested rel-deep under the synthetic root, so
+	// the ".." paths stay within it.
+	dir := ""
+	for n := strings.Count(rel, "/") + 1; n > 0; n-- {
+		dir = path.Join(dir, "..")
+		for _, name := range []string{"testdata", "go.mod", "go.sum"} {
+			hostPath := filepath.Join(dir, name)
+			fi, err := os.Stat(hostPath)
+			if err != nil {
+				continue
+			}
+			deviceDir := path.Join(deviceCwd, dir)
+			if fi.IsDir() {
+				target := path.Join(deviceDir, name)
+				if err := c.ssh2("mkdir -p " + sh(target)); err != nil {
+					return err
+				}
+				if err := c.copyTree(hostPath, target); err != nil {
+					return err
+				}
+			} else {
+				if err := c.ssh2("mkdir -p " + sh(deviceDir)); err != nil {
+					return err
+				}
+				if err := c.scp(hostPath, path.Join(deviceDir, name)); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
