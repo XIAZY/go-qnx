@@ -1245,6 +1245,7 @@ func TestStartProcess(t *testing.T) {
 		dir = Getenv("SystemRoot")
 		args = []string{"/c", "cd"}
 	default:
+		testenv.MustHaveExecPath(t, "pwd")
 		var err error
 		cmd, err = exec.LookPath("pwd")
 		if err != nil {
