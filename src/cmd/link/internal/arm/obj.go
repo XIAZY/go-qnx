@@ -67,6 +67,7 @@ func Init() (*sys.Arch, ld.Arch) {
 			Netbsddynld:    "/libexec/ld.elf_so",
 			Dragonflydynld: "XXX",
 			Solarisdynld:   "XXX",
+			Qnxdynld:       "/usr/lib/ldqnx.so.2", // symlink to libc.so.3, which is also the loader
 
 			Reloc1:    elfreloc1,
 			RelocSize: 8,
@@ -94,7 +95,8 @@ func archinit(ctxt *ld.Link) {
 	case objabi.Hlinux, /* arm elf */
 		objabi.Hfreebsd,
 		objabi.Hnetbsd,
-		objabi.Hopenbsd:
+		objabi.Hopenbsd,
+		objabi.Hqnx:
 		*ld.FlagD = false
 		// with dynamic linking
 		ld.Elfinit(ctxt)
