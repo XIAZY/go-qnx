@@ -77,14 +77,6 @@ ARM, the exit-during-bind crash above reproduces as well. The socket-name
 hang did not reproduce there in 35,000 removals (QNX 6.5 hung within
 33,000 in every run), but the workaround is kept for it too.
 
-On QNX 6.5 under KVM with 2 virtual CPUs, the SMP kernel can hang, with
-every CPU busy and no I/O completing, until a reboot, when processes are
-created while the disk is being flushed. A native Go build is such a
-load. Booting the uniprocessor kernel (`procnto-instr`) avoided it.
-The same load did not hang a four-CPU BlackBerry 10 device, nor QNX
-6.5's SMP kernel under QEMU's software emulation, so the hang appears
-tied to KVM.
-
 ### Contributing
 
 Go is the work of thousands of contributors. We appreciate your help!
