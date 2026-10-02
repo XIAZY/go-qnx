@@ -1,0 +1,43 @@
+The go_qnx_exec wrapper runs qnx/arm binaries on a remote QNX device
+over ssh. QNX ARM targets are usually devices that don't host the Go
+toolchain, so, like Android and iOS, their tests run on the device while
+the toolchain runs on a host.
+
+When the Go toolchain is built for qnx/arm, cmd/dist compiles this
+program into $GOROOT/bin/go_qnx_arm_exec, which the go command uses as
+the default -exec wrapper for qnx/arm (see go help run and go help test).
+
+The device is described entirely by environment variables, so nothing
+about a particular machine is stored here:
+
+	GOQNX_EXEC_SSH      ssh destination (required), for example a host
+	                    defined in the user's ssh config.
+	GOQNX_EXEC_RUN      directory the binary is copied to and executed
+	                    from; it must permit execution. Default /tmp.
+	GOQNX_EXEC_TMPDIR   a directory on a real filesystem that the run
+	                    user can write (optional). When set, each run
+	                    gets a subdirectory holding a copy of the test's
+	                    package directory (testdata included) as the
+	                    working directory, with the test's TMPDIR beside
+	                    it. Without it, tests that need a real directory
+	                    or their testdata fail.
+	GOQNX_EXEC_USER     run the binary as this user with "on -u"
+	                    (optional); some QNX configurations refuse to
+	                    execute an untrusted file as root.
+	GOQNX_EXEC_STAGE    a directory to copy the binary to before the run
+	                    directory (optional), for devices whose run
+	                    directory cannot be written to directly.
+
+Only GOQNX_EXEC_SSH is required. The others default or are omitted, so a
+QNX board without the execution and filesystem restrictions of a locked
+device needs only the ssh destination.
+
+A single ssh connection is reused (ssh ControlMaster), so a package's
+tests are one login. The wrapper will not remove a device directory that
+holds a Unix socket name, since unlinking one can wedge QNX's network
+stack; it leaves and reports it instead.
+
+For example, to run the standard library tests for qnx/arm:
+
+	export GOQNX_EXEC_SSH=mydevice
+	GOOS=qnx GOARCH=arm GOARM=7 go test runtime

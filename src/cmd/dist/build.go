@@ -1719,6 +1719,15 @@ func wrapperPathFor(goos, goarch string) string {
 		if gohostos != "ios" {
 			return pathf("%s/misc/ios/go_ios_exec.go", goroot)
 		}
+	case goos == "qnx" && goarch == "arm":
+		// qnx/arm targets are usually devices that don't host the
+		// toolchain, so their tests run on a device through this
+		// wrapper. qnx/386 hosts its own and gets none. A qnx/arm host
+		// with enough memory could build natively one day; it needs no
+		// wrapper.
+		if gohostos != "qnx" || gohostarch != "arm" {
+			return pathf("%s/misc/go_qnx_exec/main.go", goroot)
+		}
 	}
 	return ""
 }
