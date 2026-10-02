@@ -371,7 +371,15 @@ func setRequestCancel(req *Request, rt RoundTripper, deadline time.Time) (stopTi
 
 		var cancelCtx func()
 		req.ctx, cancelCtx = context.WithDeadline(oldCtx, deadline)
-		return cancelCtx, func() bool { return time.Now().After(deadline) }
+		// The context's timer fires once the clock reaches the deadline, so a
+		// clock reading exactly at the deadline is already a timeout. Report
+		// it as one with !Before rather than After: on a system whose clock
+		// resolution can land a reading exactly on the deadline, After would
+		// disagree with the context and the caller would get a bare "context
+		// deadline exceeded" instead of the Client.Timeout error. (Observed on
+		// a 1 ms-resolution monotonic clock; the same effect had this test
+		// marked flaky on windows/arm64.)
+		return cancelCtx, func() bool { return !time.Now().Before(deadline) }
 	}
 	initialReqCancel := req.Cancel // the user's original Request.Cancel, if any
 
