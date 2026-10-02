@@ -19,6 +19,11 @@ import (
 )
 
 func init() {
+	// A helper process that exits at once, as true(1) does, for the
+	// exec tests: not every QNX system has /bin/true.
+	if os.Getenv("GO_QNX_TRUE_HELPER") == "1" {
+		os.Exit(0)
+	}
 	// Helper processes for TestQNXSpawnSignals. "report": say whether
 	// SIGHUP was ignored when the process started. "ignore DIR": ignore
 	// SIGHUP, start a "report" child in DIR and pass on what it says.
@@ -36,6 +41,18 @@ func init() {
 		fmt.Print(out)
 		os.Exit(0)
 	}
+}
+
+// trueCommand returns a command that runs this test binary as a
+// process that exits at once with status 0, ignoring its arguments.
+func trueCommand(t *testing.T, args ...string) *exec.Cmd {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(exe, args...)
+	cmd.Env = append(os.Environ(), "GO_QNX_TRUE_HELPER=1")
+	return cmd
 }
 
 // sighupChild runs this test binary as the helper process given by
@@ -84,7 +101,7 @@ func TestQNXSetgroupsLimit(t *testing.T) {
 // argument list while other goroutines allocate, and check that the
 // parent survives with an intact heap.
 func TestQNXExecLargeEnvironment(t *testing.T) {
-	env := append(os.Environ(), "BIG="+strings.Repeat("x", 256<<10))
+	env := append(os.Environ(), "BIG="+strings.Repeat("x", 256<<10), "GO_QNX_TRUE_HELPER=1")
 	args := make([]string, 64<<10/8)
 	for i := range args {
 		args[i] = "1234567" // 7 bytes and a NUL
@@ -115,7 +132,7 @@ func TestQNXExecLargeEnvironment(t *testing.T) {
 		}()
 	}
 	for range 100 {
-		cmd := exec.Command("/bin/true", args...)
+		cmd := trueCommand(t, args...)
 		cmd.Env = env
 		if err := cmd.Run(); err != nil {
 			close(stop)
@@ -171,7 +188,7 @@ func TestQNXExecWhileClosing(t *testing.T) {
 	}
 	defer func() { close(stop); wg.Wait() }()
 	for i := range n {
-		cmd := exec.Command("/bin/true")
+		cmd := trueCommand(t)
 		if i%2 == 1 {
 			cmd.Dir = "/" // vfork, not spawn
 		}
@@ -197,7 +214,7 @@ func TestQNXExecDirVforkFailures(t *testing.T) {
 			}
 			return time.Since(start) < fail
 		})
-		cmd := exec.Command("/bin/true")
+		cmd := trueCommand(t)
 		cmd.Dir = "/" // vfork, not spawn
 		t0 := time.Now()
 		err := cmd.Run()
