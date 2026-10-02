@@ -83,6 +83,10 @@ func checkgoarm() {
 // debuglog's. The runtime calibrates ticks against nanotime itself and
 // does not need them synchronised across CPUs.
 //
+// The kernel serialises the call: with all four CPUs of that device
+// calling at once, each call took about 1.3 µs, against about 430 ns
+// for clock_gettime. That is why nanotime does not use ClockCycles.
+//
 //go:nosplit
 func cputicks() int64 {
 	var r [2]uint32 // low, high
