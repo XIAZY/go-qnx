@@ -5,7 +5,6 @@
 package runtime
 
 import (
-	"internal/abi"
 	"internal/runtime/atomic"
 	"unsafe"
 )
@@ -161,10 +160,6 @@ func qnxInitTSC() {
 	qnxTSC.state.Store(tscOn)
 }
 
-// syspagePtrName is static data: qnxCyclesPerSec runs from osinit,
-// before the heap exists.
-var syspagePtrName = []byte("_syspage_ptr\x00")
-
 // qnxCyclesPerSec returns the system page's qtime cycles_per_sec, or 0.
 // The offsets were checked against <sys/syspage.h> of QNX 6.5.0: in
 // struct syspage_entry, the syspage_entry_info qtime is at 32 (after the
@@ -229,18 +224,6 @@ func qnxSwitchToMonotonic() {
 	}
 	qnxTSC.state.Store(tscOff)
 }
-
-//go:nosplit
-func dlsym(handle uintptr, name *byte) uintptr {
-	args := struct {
-		handle uintptr
-		name   *byte
-	}{handle, name}
-	return uintptr(libcCall(unsafe.Pointer(abi.FuncPCABI0(dlsym_trampoline)), unsafe.Pointer(&args)))
-}
-func dlsym_trampoline()
-
-//go:cgo_import_dynamic libc_dlsym dlsym "libc.so.3"
 
 // Implemented in sys_qnx_386.s.
 func qnxCpuid(eax, ecx uint32) (a, b, c, d uint32)
