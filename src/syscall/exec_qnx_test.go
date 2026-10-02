@@ -24,7 +24,8 @@ func init() {
 	if os.Getenv("GO_QNX_TRUE_HELPER") == "1" {
 		os.Exit(0)
 	}
-	// A helper process for TestQNXSpawnExtraFilesOnly: print which of the
+	// A helper process for TestQNXSpawnExtraFilesOnly and
+	// TestQNXSpawnClosedSlot: print which of the
 	// descriptors listed in the variable are open.
 	if list := os.Getenv("GO_QNX_FDS_HELPER"); list != "" {
 		var st syscall.Stat_t
@@ -317,6 +318,65 @@ func testSpawnExtraFilesOnly(t *testing.T) {
 		}
 		if strings.Join(got, " ") != strings.Join(want, " ") {
 			t.Errorf("Dir %q, descriptors %s: child has %v, want %v", dir, list, got, want)
+		}
+	}
+}
+
+// A nil entry in ExtraFiles is a descriptor closed in the child, on
+// both paths: spawn's SPAWN_FDCLOSED and vfork's close. Slots 3, 10
+// and 12 are closed here, and the parent has descriptors with those
+// numbers open and not close-on-exec, so an ignored SPAWN_FDCLOSED
+// would show. (Slots 0 to 2 can't be checked this way: a Go child
+// opens /dev/null on any of them it finds closed.)
+func TestQNXSpawnClosedSlot(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	defer w.Close()
+	null, err := os.Open("/dev/null")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer null.Close()
+	for {
+		fd, err := syscall.Dup(int(null.Fd()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer syscall.Close(fd)
+		if fd >= 14 {
+			break
+		}
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Child slots 3 to 13.
+	closed := map[int]bool{3: true, 10: true, 12: true}
+	extra := make([]*os.File, 11)
+	var list, want []string
+	for i := range extra {
+		if !closed[3+i] {
+			extra[i] = r
+			want = append(want, fmt.Sprint(3+i))
+		}
+		list = append(list, fmt.Sprint(3+i))
+	}
+	for _, dir := range []string{"", "/"} {
+		cmd := exec.Command(exe)
+		cmd.Env = append(os.Environ(), "GO_QNX_FDS_HELPER="+strings.Join(list, " "))
+		cmd.Dir = dir
+		cmd.ExtraFiles = extra
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("Dir %q: %v", dir, err)
+		}
+		if got := strings.Fields(string(out)); strings.Join(got, " ") != strings.Join(want, " ") {
+			t.Errorf("Dir %q, slots 3, 10 and 12 closed: child has %v open of %v, want %v", dir, got, list, want)
 		}
 	}
 }
