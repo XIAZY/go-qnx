@@ -16,6 +16,7 @@ import (
 	"go/parser"
 	"go/token"
 	"internal/diff"
+	"internal/testenv"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -34,6 +35,7 @@ const (
 // counterpart. If -write is set, this test actually writes the expected
 // content to go/types; otherwise, it just compares with the existing content.
 func TestGenerate(t *testing.T) {
+	testenv.MustHaveSource(t)
 	// If filesToWrite is set, write the generated content to disk.
 	// In the special case of "all", write all files in filemap.
 	write := *filesToWrite != ""

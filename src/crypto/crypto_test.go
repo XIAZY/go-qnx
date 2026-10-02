@@ -98,6 +98,7 @@ UjmopwKBgAqB2KYYMUqAOvYcBnEfLDmyZv9BTVNHbR2lKkMYqv5LlvDaBxVfilE0
 }
 
 func TestDisallowedAssemblyInstructions(t *testing.T) {
+	testenv.MustHaveSource(t)
 	// This test enforces the cryptography assembly policy rule that we do not
 	// use BYTE or WORD instructions, since these instructions can obscure what
 	// the assembly is actually doing. If we do not support specific
