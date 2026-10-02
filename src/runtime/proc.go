@@ -5889,7 +5889,9 @@ func sigprof(pc, sp, lr uintptr, gp *g, mp *m) {
 		}
 	}
 
-	if prof.hz.Load() != 0 {
+	// On qnx one SIGPROF can stand for several sampling periods, or for
+	// none (see cpuProfWeight); elsewhere it is always one.
+	if w := cpuProfWeight(); w != 0 && prof.hz.Load() != 0 {
 		// Note: it can happen on Windows that we interrupted a system thread
 		// with no g, so gp could nil. The other nil checks are done out of
 		// caution, but not expected to be nil in practice.
@@ -5897,7 +5899,7 @@ func sigprof(pc, sp, lr uintptr, gp *g, mp *m) {
 		if gp != nil && gp.m != nil && gp.m.curg != nil {
 			tagPtr = &gp.m.curg.labels
 		}
-		cpuprof.add(tagPtr, stk[:n])
+		cpuprof.add(tagPtr, stk[:n], w)
 
 		gprof := gp
 		var mp *m
@@ -5909,7 +5911,14 @@ func sigprof(pc, sp, lr uintptr, gp *g, mp *m) {
 			mp = gp.m
 			pp = gp.m.p.ptr()
 		}
-		traceCPUSample(gprof, mp, pp, stk[:n])
+		// The trace gets one CPU sample per period, as the profile
+		// does, but at most 16 from one signal: a handler must not
+		// run for long, and a larger weight means the profiling
+		// thread was starved and the timing is lost anyway. The
+		// profile still carries the full weight.
+		for range min(w, 16) {
+			traceCPUSample(gprof, mp, pp, stk[:n])
+		}
 	}
 	getg().m.mallocing--
 }
