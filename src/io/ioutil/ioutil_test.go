@@ -6,6 +6,7 @@ package ioutil_test
 
 import (
 	"bytes"
+	"internal/testenv"
 	. "io/ioutil"
 	"os"
 	"path/filepath"
@@ -109,6 +110,8 @@ func TestReadDir(t *testing.T) {
 		t.Fatalf("ReadDir %s: error expected, none found", dirname)
 	}
 
+	// The rest reads the package's own source directory ("..").
+	testenv.MustHaveSource(t)
 	dirname = ".."
 	list, err := ReadDir(dirname)
 	if err != nil {

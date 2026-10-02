@@ -6,12 +6,34 @@ package parser
 
 import (
 	"go/token"
+	"internal/testenv"
 	"os"
+	"sync"
 	"testing"
 )
 
-var src = readFile("../printer/nodes.go")
+var (
+	srcOnce sync.Once
+	src     []byte
+)
 
+// benchSrc lazily loads the file the benchmarks parse. It is not read at
+// package init because the source tree is not always present where the test
+// binary runs (for example a wrapper that copies only the test binary to a
+// device); testenv.MustHaveSource skips cleanly in that case.
+func benchSrc(b *testing.B) []byte {
+	testenv.MustHaveSource(b)
+	srcOnce.Do(func() {
+		data, err := os.ReadFile("../printer/nodes.go")
+		if err != nil {
+			b.Fatal(err)
+		}
+		src = data
+	})
+	return src
+}
+
+// readFile reads a file or panics; used by tests that read testdata.
 func readFile(filename string) []byte {
 	data, err := os.ReadFile(filename)
 	if err != nil {
@@ -21,6 +43,7 @@ func readFile(filename string) []byte {
 }
 
 func BenchmarkParse(b *testing.B) {
+	src := benchSrc(b)
 	b.SetBytes(int64(len(src)))
 	for i := 0; i < b.N; i++ {
 		if _, err := ParseFile(token.NewFileSet(), "", src, ParseComments); err != nil {
@@ -30,6 +53,7 @@ func BenchmarkParse(b *testing.B) {
 }
 
 func BenchmarkParseOnly(b *testing.B) {
+	src := benchSrc(b)
 	b.SetBytes(int64(len(src)))
 	for i := 0; i < b.N; i++ {
 		if _, err := ParseFile(token.NewFileSet(), "", src, ParseComments|SkipObjectResolution); err != nil {
@@ -39,6 +63,7 @@ func BenchmarkParseOnly(b *testing.B) {
 }
 
 func BenchmarkResolve(b *testing.B) {
+	src := benchSrc(b)
 	b.SetBytes(int64(len(src)))
 	for i := 0; i < b.N; i++ {
 		b.StopTimer()
