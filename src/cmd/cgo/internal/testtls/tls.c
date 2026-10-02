@@ -4,7 +4,29 @@
 
 #include <stddef.h>
 
-#if __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
+#if defined(__QNX__)
+
+// QNX has no ELF thread-local storage: there is no __tls_get_addr in its
+// libc, which is why the Go runtime keeps g in a thread-control-block slot
+// rather than in a __thread variable. A _Thread_local here would fail to
+// link, so report the test as skippable instead.
+const char *
+checkTLS() {
+	return "QNX has no ELF thread-local storage";
+}
+
+void
+setTLS(int v)
+{
+}
+
+int
+getTLS()
+{
+	return 0;
+}
+
+#elif __STDC_VERSION__ >= 201112L && !defined(__STDC_NO_THREADS__)
 
 // Mingw seems not to have threads.h, so we use the _Thread_local keyword rather
 // than the thread_local macro.
