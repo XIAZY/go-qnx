@@ -501,7 +501,9 @@ func (c *config) scpArgs() []string {
 // socket name: unlinking a socket name can wedge QNX's network stack. It
 // fails closed — if the check can't be made (find missing, path gone),
 // or a socket is found, the path is left in place and the reason
-// reported, rather than removed on faith.
+// reported, rather than removed on faith. A removal that fails, or that
+// leaves the path behind, is reported too, with rm's own messages, so
+// that nothing is left on the device without saying why.
 func (c *config) removeSafely(p string) {
 	out, err := c.output("find " + sh(p) + " -type s")
 	if err != nil {
@@ -512,7 +514,21 @@ func (c *config) removeSafely(p string) {
 		fmt.Fprintf(os.Stderr, "go_qnx_exec: leaving %s in place: it holds a socket name, which is unsafe to remove on QNX:\n%s", p, out)
 		return
 	}
-	c.ssh2("rm -rf " + sh(p))
+	// rm's messages go to its standard output here, so that they are
+	// reported only if the path survives. One retry: rm can fail on a
+	// directory it emptied while reading it.
+	const rm = "rm -rf %[1]s 2>&1; test -e %[1]s && echo REMAINS; true"
+	for try := 0; try < 2; try++ {
+		out, err = c.output(fmt.Sprintf(rm, sh(p)))
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "go_qnx_exec: could not remove %s: %v\n", p, err)
+			return
+		}
+		if !bytes.Contains(out, []byte("REMAINS")) {
+			return
+		}
+	}
+	fmt.Fprintf(os.Stderr, "go_qnx_exec: %s is still on the device after rm -rf:\n%s", p, out)
 }
 
 // output runs a command on the device and returns its standard output.
