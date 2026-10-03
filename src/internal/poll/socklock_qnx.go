@@ -48,6 +48,13 @@ import (
 // blocking holds the lock for as long as its call blocks, and an unlink
 // waits for it.
 //
+// The lock is taken only where the system's io-pkt is known to need it:
+// see sockLockNeeded. On BlackBerry 10, whose system reports release
+// 8.0.0, neither hazard above reproduced: 35,205 removals of socket names
+// with no lock on 2 October 2026, and 41,376 more on 3 October with
+// other threads blocked in accept and recv meanwhile, left io-pkt
+// healthy, where QNX 6.5 hung within 33,000 removals in every run.
+//
 // Lock order: qnxSockLock (shared), then syscall.ForkLock (shared, in
 // net's sysSocket) or syscall's close lock (shared, inside
 // syscall.Close). Whoever holds either of those exclusively must make no
@@ -56,35 +63,83 @@ import (
 // inner one would wait forever.
 var qnxSockLock sync.RWMutex
 
+var (
+	sockLockOnce sync.Once
+	sockLockOn   bool
+)
+
+// sockLockNeeded reports whether qnxSockLock is taken on this system. It
+// is, unless uname reports a release of 8 or later. 8.0.0 is the number
+// BlackBerry 10 reports, and BlackBerry 10 is the only such system on
+// which the hazards were measured; a later QNX 8, which this port does
+// not target, would skip the lock too, without evidence. A release that
+// cannot be read or parsed keeps the lock.
+func sockLockNeeded() bool {
+	sockLockOnce.Do(func() {
+		var u syscall.Utsname
+		sockLockOn = syscall.Uname(&u) != nil || releaseMajor(u.Release[:]) < 8
+	})
+	return sockLockOn
+}
+
+// releaseMajor returns the leading number of a uname release such as
+// "6.5.0", or -1 if there is none.
+func releaseMajor(r []int8) int {
+	n := -1
+	for _, c := range r {
+		if c < '0' || c > '9' {
+			break
+		}
+		if n < 0 {
+			n = 0
+		}
+		n = n*10 + int(c-'0')
+		if n > 1000 {
+			return -1
+		}
+	}
+	return n
+}
+
 // sockRLock takes qnxSockLock shared if fd is a socket.
 func (fd *FD) sockRLock() {
-	if !fd.isFile {
+	if !fd.isFile && sockLockNeeded() {
 		qnxSockLock.RLock()
 	}
 }
 
 // sockRUnlock releases what sockRLock took.
 func (fd *FD) sockRUnlock() {
-	if !fd.isFile {
+	if !fd.isFile && sockLockNeeded() {
 		qnxSockLock.RUnlock()
 	}
 }
 
 // SockRLock takes the socket lock shared, for socket calls that package
 // net makes outside an FD.
-func SockRLock() { qnxSockLock.RLock() }
+func SockRLock() {
+	if sockLockNeeded() {
+		qnxSockLock.RLock()
+	}
+}
 
 // SockRUnlock releases what SockRLock took.
-func SockRUnlock() { qnxSockLock.RUnlock() }
+func SockRUnlock() {
+	if sockLockNeeded() {
+		qnxSockLock.RUnlock()
+	}
+}
 
 // UnlinkSocket removes the name of a Unix socket, with no other socket
-// call of this process in progress.
+// call of this process in progress where the lock is needed.
 //
 // The unlink is also bracketed against signals and exit, as io-pkt can
 // crash if the caller stops waiting for it; see runtime/blockop_qnx.go.
 func UnlinkSocket(path string) error {
-	qnxSockLock.Lock()
-	defer qnxSockLock.Unlock()
+	if sockLockNeeded() {
+		qnxSockLock.Lock()
+		defer qnxSockLock.Unlock()
+	}
 	qnxBlockopBegin()
 	defer qnxBlockopEnd()
 	return syscall.Unlink(path)
