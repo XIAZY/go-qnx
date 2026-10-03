@@ -501,9 +501,11 @@ func (c *config) scpArgs() []string {
 // socket name: unlinking a socket name can wedge QNX's network stack. It
 // fails closed — if the check can't be made (find missing, path gone),
 // or a socket is found, the path is left in place and the reason
-// reported, rather than removed on faith. A removal that fails, or that
-// leaves the path behind, is reported too, with rm's own messages, so
-// that nothing is left on the device without saying why.
+// reported, rather than removed on faith; when a socket is found,
+// everything around it is removed, leaving only the socket name and its
+// parent directories. A removal that fails, or that leaves the path
+// behind, is reported too, with rm's own messages, so that nothing is
+// left on the device without saying why.
 func (c *config) removeSafely(p string) {
 	out, err := c.output("find " + sh(p) + " -type s")
 	if err != nil {
@@ -511,7 +513,15 @@ func (c *config) removeSafely(p string) {
 		return
 	}
 	if len(bytes.TrimSpace(out)) != 0 {
-		fmt.Fprintf(os.Stderr, "go_qnx_exec: leaving %s in place: it holds a socket name, which is unsafe to remove on QNX:\n%s", p, out)
+		// Keep each socket name and the directories leading to it;
+		// remove everything else, so that what stays behind is the
+		// socket's path and not the whole tree: first every file that
+		// isn't a socket, then, bottom-up, every directory with no
+		// socket under it. (Not rmdir: BlackBerry 10 has none.)
+		c.ssh2(fmt.Sprintf("find %[1]s ! -type s ! -type d -exec rm -f {} \\; ; "+
+			"find %[1]s -depth -type d | while read d; do "+
+			"[ -d \"$d\" ] && [ -z \"$(find \"$d\" -type s)\" ] && rm -rf \"$d\"; done; true", sh(p)))
+		fmt.Fprintf(os.Stderr, "go_qnx_exec: leaving these socket names in %s, which are unsafe to remove on QNX, with only their parent directories:\n%s", p, out)
 		return
 	}
 	// rm's messages go to its standard output here, so that they are
