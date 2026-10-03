@@ -79,6 +79,7 @@ type config struct {
 	tmpdir string // GOQNX_EXEC_TMPDIR
 	user   string // GOQNX_EXEC_USER
 	stage  string // GOQNX_EXEC_STAGE
+	rmsock bool   // GOQNX_EXEC_RMSOCK=1
 	ctl    string // ssh ControlPath socket
 }
 
@@ -89,6 +90,7 @@ func configure() (*config, error) {
 		tmpdir: os.Getenv("GOQNX_EXEC_TMPDIR"),
 		user:   os.Getenv("GOQNX_EXEC_USER"),
 		stage:  os.Getenv("GOQNX_EXEC_STAGE"),
+		rmsock: os.Getenv("GOQNX_EXEC_RMSOCK") == "1",
 	}
 	if c.ssh == "" {
 		return nil, fmt.Errorf("GOQNX_EXEC_SSH is not set")
@@ -505,8 +507,16 @@ func (c *config) scpArgs() []string {
 // everything around it is removed, leaving only the socket name and its
 // parent directories. A removal that fails, or that leaves the path
 // behind, is reported too, with rm's own messages, so that nothing is
-// left on the device without saying why.
+// left on the device without saying why. With GOQNX_EXEC_RMSOCK=1, on a
+// device where removing socket names is known to be safe, it removes the
+// path whatever it holds.
 func (c *config) removeSafely(p string) {
+	if c.rmsock {
+		// GOQNX_EXEC_RMSOCK=1: removing socket names is known to be
+		// safe on this device, so remove the path whatever it holds.
+		c.remove(p)
+		return
+	}
 	out, err := c.output("find " + sh(p) + " -type s")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "go_qnx_exec: not removing %s: could not check it for socket names: %v\n", p, err)
@@ -524,10 +534,18 @@ func (c *config) removeSafely(p string) {
 		fmt.Fprintf(os.Stderr, "go_qnx_exec: leaving these socket names in %s, which are unsafe to remove on QNX, with only their parent directories:\n%s", p, out)
 		return
 	}
+	c.remove(p)
+}
+
+// remove removes a device path with rm -rf and reports it if the path
+// survives or the command cannot be run.
+func (c *config) remove(p string) {
 	// rm's messages go to its standard output here, so that they are
 	// reported only if the path survives. One retry: rm can fail on a
 	// directory it emptied while reading it.
 	const rm = "rm -rf %[1]s 2>&1; test -e %[1]s && echo REMAINS; true"
+	var out []byte
+	var err error
 	for try := 0; try < 2; try++ {
 		out, err = c.output(fmt.Sprintf(rm, sh(p)))
 		if err != nil {
