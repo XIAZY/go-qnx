@@ -36,8 +36,8 @@ the same) and BlackBerry 10 — BlackBerry's system derived from QNX of
 that era — on ARM (`GOOS=qnx GOARCH=arm`). The port rides on upstream
 release branches: build from `release-branch.go1.27`, and `master`
 carries the same work on the development tip. The port is not part of
-upstream Go, and cmd/dist lists it among the broken ports, so a toolchain
-that runs on QNX itself needs make.bash `--force`.
+upstream Go, and cmd/dist lists it among the broken ports, so make.bash
+for a qnx target needs `--force`.
 
 To cross-compile from another system, build the toolchain for that
 system as usual and set `GOOS` and `GOARCH`:
@@ -63,10 +63,13 @@ cgo on BlackBerry 10/ARM works with the BlackBerry 10 SDK's clang as
 startup files, libraries and compiler-rt builtins explicitly, since the
 SDK's clang has no complete QNX sysroot of its own.
 
-To run Go's own tests on a QNX device, set the ssh host of the device; the
-go command runs the test binaries there through the exec wrapper it builds
-as `bin/go_qnx_arm_exec` and uses by default for qnx/arm:
+To run Go's own tests on a BlackBerry 10 device, build the toolchain for
+qnx/arm, which also builds the exec wrapper `bin/go_qnx_arm_exec`; with
+`bin` on the `PATH`, the go command runs each test binary on the device
+through it, over ssh:
 
+	cd src && GOOS=qnx GOARCH=arm ./make.bash --force
+	export PATH=$(pwd)/../bin:$PATH
 	GOQNX_EXEC_SSH=<ssh-host> GOOS=qnx GOARCH=arm go test runtime
 
 See `misc/go_qnx_exec/README` for the other `GOQNX_EXEC_*` variables.
