@@ -34,3 +34,12 @@ TEXT ·libc_sigaction_trampoline(SB),NOSPLIT,$0-0
 
 TEXT ·libc_pthread_sigmask_trampoline(SB),NOSPLIT,$0-0
 	JMP	libc_pthread_sigmask(SB)
+
+TEXT ·libc_opendir_trampoline(SB),NOSPLIT,$0-0
+	JMP	libc_opendir(SB)
+
+TEXT ·libc_readdir_r_trampoline(SB),NOSPLIT,$0-0
+	JMP	libc_readdir_r(SB)
+
+TEXT ·libc_closedir_trampoline(SB),NOSPLIT,$0-0
+	JMP	libc_closedir(SB)

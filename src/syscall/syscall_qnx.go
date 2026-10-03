@@ -118,6 +118,56 @@ func libc_getcwd_trampoline()
 
 const ImplementsGetwd = true
 
+// Directory reading on QNX goes through libc's opendir/readdir_r/closedir
+// rather than read(2) on a directory descriptor. QNX merges a union directory
+// (one served by several resource managers, such as / or /dev) in the client:
+// opendir connects to every server, while a plain read reaches only the first,
+// so read(2) silently returns a partial listing. QNX's libc has no fdopendir,
+// so os reopens the directory by name and verifies it with fstat; see
+// os/dir_qnx.go. These are linked into os with go:linkname.
+
+func opendir(name string) (dir uintptr, err error) {
+	var p *byte
+	p, err = BytePtrFromString(name)
+	if err != nil {
+		return 0, err
+	}
+	r1, _, e1 := syscallPtr(abi.FuncPCABI0(libc_opendir_trampoline), uintptr(unsafe.Pointer(p)), 0, 0)
+	if r1 == 0 {
+		if e1 != 0 {
+			return 0, errnoErr(e1)
+		}
+		return 0, EINVAL
+	}
+	return r1, nil
+}
+func libc_opendir_trampoline()
+
+//go:cgo_import_dynamic libc_opendir opendir "libc.so.3"
+
+// readdir_r reports its error through the return value, not the errno global:
+// 0 on success (with result pointing at entry, or nil at end of directory) or
+// an errno. entry must have room for the name beyond Dirent.Name; os provides
+// a buffer of that size.
+func readdir_r(dir uintptr, entry *Dirent, result **Dirent) (errno Errno) {
+	r1, _, _ := syscall(abi.FuncPCABI0(libc_readdir_r_trampoline), dir, uintptr(unsafe.Pointer(entry)), uintptr(unsafe.Pointer(result)))
+	return Errno(r1)
+}
+func libc_readdir_r_trampoline()
+
+//go:cgo_import_dynamic libc_readdir_r readdir_r "libc.so.3"
+
+func closedir(dir uintptr) (err error) {
+	_, _, e1 := syscall(abi.FuncPCABI0(libc_closedir_trampoline), dir, 0, 0)
+	if e1 != 0 {
+		err = errnoErr(e1)
+	}
+	return
+}
+func libc_closedir_trampoline()
+
+//go:cgo_import_dynamic libc_closedir closedir "libc.so.3"
+
 func Getwd() (string, error) {
 	var buf [PathMax]byte
 	if err := getcwd(buf[:]); err != nil {
