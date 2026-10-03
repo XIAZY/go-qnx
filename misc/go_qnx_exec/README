@@ -33,15 +33,21 @@ about a particular machine is stored here:
 	GOQNX_EXEC_STAGE    a directory to copy the binary to before the run
 	                    directory (optional), for devices whose run
 	                    directory cannot be written to directly.
+	GOQNX_EXEC_RMSOCK   set to 1 on a device where removing a Unix socket
+	                    name is known to be safe (optional); the wrapper
+	                    then removes everything it created, socket names
+	                    included. See below for the default.
 
 Only GOQNX_EXEC_SSH is required. The others default or are omitted, so a
 QNX board without the execution and filesystem restrictions of a locked
 device needs only the ssh destination.
 
 A single ssh connection is reused (ssh ControlMaster), so a package's
-tests are one login. The wrapper will not remove a device directory that
-holds a Unix socket name, since unlinking one can wedge QNX's network
-stack; it leaves and reports it instead.
+tests are one login. By default the wrapper will not remove a Unix
+socket name from the device, since unlinking one can wedge the network
+stack of QNX 6.5: around a socket name a test left behind, it removes
+everything else and reports the name it kept. With GOQNX_EXEC_RMSOCK=1
+it removes the whole directory.
 
 For example, to run the standard library tests for qnx/arm:
 
