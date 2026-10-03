@@ -100,6 +100,61 @@ ARM, the exit-during-bind crash above reproduces as well. The socket-name
 hang did not reproduce there in 35,000 removals (QNX 6.5 hung within
 33,000 in every run), but the workaround is kept for it too.
 
+#### Changes since go1.27.1
+
+A build from `release-branch.go1.27` reports `go version
+go1.27-devel_<commit>`: the VERSION file is removed on purpose, so the build is
+identified by its commit and never shares a build cache with Google's go1.27.1.
+If you build the toolchain and copy the tree to another machine without `.git`,
+copy `VERSION.cache` too (make.bash writes it), or `go run cmd/dist` and the
+tests that invoke it fail.
+
+New:
+
+- The ARM port, `GOOS=qnx GOARCH=arm` (GOARM=7), for QNX Neutrino 6.5-era
+  systems including BlackBerry 10.
+- cgo for qnx/arm, and the `misc/go_qnx_exec` on-device test runner (both above).
+
+Fixed, on both architectures unless noted:
+
+- Directory listings no longer truncate. os.ReadDir, filepath.WalkDir and the
+  rest returned only the first resource manager's entries of a union directory
+  (`/`, `/dev`) — `/` gave 14 of 16 on QNX 6.5 and 11 of 31 on BlackBerry 10,
+  silently, since release 1. Directories are now read through libc.
+- The network poller is rebuilt on QNX pulses and ionotify instead of poll(2),
+  which on 6.5 could lose a socket's readiness.
+- CPU profiling works; QNX 6.5 has no CPU-time timers, so a profiling thread
+  reads each thread's CPU clock and sends SIGPROF.
+- nanotime reads the TSC where it is trusted, instead of 6.5's 1 ms
+  CLOCK_MONOTONIC.
+- A program that stops the world in a loop (such as ReadMemStats) no longer
+  starves other goroutines on one CPU: the runtime yields once before each stop.
+  Also affected release 1.
+- The Unix-socket crash and hang above are guarded; the socket-name lock is
+  taken only below release 8 (QNX 6.5), the hang being measured absent on
+  BlackBerry 10 (release 8.0.0).
+- An HTTP client timeout is reported as the Client.Timeout error, not a bare
+  context error, when the clock reads exactly the deadline. General fix.
+- Child processes with closed descriptor slots start via spawn, not vfork.
+
+Known limitations, besides the Unix-socket hazards above:
+
+- Timers and sleeps have 1 ms granularity where the clock does (qnx/arm, and
+  qnx/386 without a trusted TSC).
+- File.Readdir and Readdir(-1) on `/dev` return "resource busy" for an active
+  resource manager (such as `/dev/nws`); os.ReadDir lists such entries with an
+  unknown type instead.
+- There is no `go` tool on BlackBerry 10, so tests that build or run Go programs
+  on the device skip there.
+
+Tested:
+
+- BlackBerry 10 (qnx/arm), on device: full `go test -short std` — 377 packages,
+  0 failures, 0 hangs; plus cgo's runtime signal/thread cases and
+  cmd/cgo/internal/test.
+- QNX 6.5.0 (qnx/386), one CPU: full `go test -short std` from prebuilt
+  binaries — 377 packages, 0 failures, 0 hangs.
+
 ### Contributing
 
 Go is the work of thousands of contributors. We appreciate your help!
