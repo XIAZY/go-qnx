@@ -514,6 +514,11 @@ func (c *config) removeSafely(p string) {
 	if c.rmsock {
 		// GOQNX_EXEC_RMSOCK=1: removing socket names is known to be
 		// safe on this device, so remove the path whatever it holds.
+		// The socket names go first, listed in full before any is
+		// removed: on BlackBerry 10, once a socket name is removed, the
+		// next read of an open listing of its directory can fail with
+		// EBADF, which stops rm -rf (and find) part way.
+		c.ssh2(fmt.Sprintf("for s in $(find %s -type s); do rm -f \"$s\"; done; true", sh(p)))
 		c.remove(p)
 		return
 	}
