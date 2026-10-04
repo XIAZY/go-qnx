@@ -146,6 +146,9 @@ Known limitations, besides the Unix-socket hazards above:
   unknown type instead.
 - There is no `go` tool on BlackBerry 10, so tests that build or run Go programs
   on the device skip there.
+- A relative Unix-socket path is resolved from `/`, not the working directory,
+  so on BlackBerry 10 as an ordinary user `net.Listen("unix", "name")` fails
+  with EACCES; use an absolute path.
 
 Tested:
 
@@ -154,6 +157,10 @@ Tested:
   cmd/cgo/internal/test.
 - QNX 6.5.0 (qnx/386), one CPU: full `go test -short std` from prebuilt
   binaries — 377 packages, 0 failures, 0 hangs.
+- QNX 6.5.0 (qnx/386), two CPUs under QEMU software emulation: full `go test
+  -short std` from prebuilt binaries: 377 packages; 3 timing tests fail under
+  emulation's clock, the same with the process pinned to one CPU, and pass on
+  real-time hardware.
 
 ### Contributing
 
