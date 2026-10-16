@@ -41,6 +41,11 @@ const (
 	O_DIRECTORY     = 0
 )
 
+// RLIM_INFINITY is ((rlim_t)-3) in QNX's <sys/resource.h>, with rlim_t
+// unsigned 64-bit under _FILE_OFFSET_BITS=64. cgo -godefs writes it as
+// -0x3, which cannot be stored in Rlimit, so mkerrors.sh leaves it out.
+const RLIM_INFINITY = 1<<64 - 3
+
 // Implemented in the runtime package (runtime/sys_qnx.go).
 func syscall(fn, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)
 func syscallX(fn, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno)

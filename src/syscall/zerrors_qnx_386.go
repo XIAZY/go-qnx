@@ -686,7 +686,6 @@ const (
 	RLIMIT_FSIZE                      = 0x1
 	RLIMIT_NOFILE                     = 0x5
 	RLIMIT_STACK                      = 0x3
-	RLIM_INFINITY                     = -0x3
 	RTAX_AUTHOR                       = 0x6
 	RTAX_BRD                          = 0x7
 	RTAX_DST                          = 0x0
