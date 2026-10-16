@@ -63,6 +63,11 @@ const qnxBlockopWait = 400
 // the synchronous ones, which must stay deliverable and which a system
 // call cannot raise.
 //
+// syscall_qnxBlockopBegin and syscall_qnxBlockopEnd should be internal
+// details, but golang.org/x/sys/unix for qnx accesses them using
+// linkname, to bracket the same calls as the syscall package. Do not
+// remove or change their type signatures.
+//
 //go:linkname syscall_qnxBlockopBegin syscall.qnxBlockopBegin
 func syscall_qnxBlockopBegin() { qnxBlockopBegin() }
 

@@ -495,6 +495,9 @@ func sigprocmask_trampoline()
 
 // The syscall package calls libc through these. fn is the address of
 // the libc function; err is errno when the call returned -1.
+// golang.org/x/sys/unix for qnx accesses them using linkname, as it
+// does on darwin and openbsd: do not remove or change their type
+// signatures.
 //
 // The X versions expect a 64-bit result in DX:AX and test all of it
 // for -1; the others test only AX.
