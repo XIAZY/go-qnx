@@ -63,6 +63,16 @@ cgo on BlackBerry 10/ARM works with the BlackBerry 10 SDK's clang as
 startup files, libraries and compiler-rt builtins explicitly, since the
 SDK's clang has no complete QNX sysroot of its own.
 
+`golang.org/x/sys/unix` for QNX lives on the `qnx` branch of
+https://github.com/XIAZY/go-sys-qnx, a fork of golang.org/x/sys, and
+needs no cgo. Use it with a replace line in your `go.mod`:
+
+	replace golang.org/x/sys => github.com/XIAZY/go-sys-qnx v0.0.0-20261016215730-6348336c2429
+
+It holds what QNX 6.5 has, so there are no `*at` calls, `pipe2`,
+`accept4`, `dup3` or `sendfile`, and `ReadDirent` lists only part of a
+union directory such as `/` or `/dev` (package `os` lists them whole).
+
 To run Go's own tests on a BlackBerry 10 device, build the toolchain for
 qnx/arm, which also builds the exec wrapper `bin/go_qnx_arm_exec`; with
 `bin` on the `PATH`, the go command runs each test binary on the device
