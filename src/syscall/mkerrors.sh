@@ -300,10 +300,13 @@ ccflags="$@"
 		$2 ~ /^ELF_.*$/ {next}	# <asm/elf.h> contains ELF_ARCH, etc.
 		# QNX: old BSD tty ioctls whose argument structs are not declared,
 		# a broken IFT_ value, and E*_DYNAMIC errno aliases that name libc
-		# variables rather than constants.
+		# variables rather than constants. RLIM_INFINITY is ((rlim_t)-3),
+		# which cgo -godefs writes as -0x3, a value that does not fit
+		# the uint64 fields of Rlimit; syscall_qnx.go defines it instead.
 		qnx && $2 ~ /^TIOC(GETC|GETP|GLTC|SETC|SETN|SETP|SLTC)$/ {next}
 		qnx && $2 == "IFT_PON622" {next}
 		qnx && $2 ~ /^E[A-Z0-9_]+_DYNAMIC$/ {next}
+		qnx && $2 == "RLIM_INFINITY" {next}
 
 		$2 !~ /^ETH_/ &&
 		$2 !~ /^EPROC_/ &&
