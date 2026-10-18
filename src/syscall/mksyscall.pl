@@ -105,6 +105,27 @@ if($libc) {
 # treats its EINTR like EINPROGRESS). close is never retried: the
 # descriptor may be gone already. exit does not return. spawn may have
 # created the child before it was interrupted.
+#
+# The retry issues the same buffer again from the front. That is correct
+# only if a call that has already moved bytes returns the count, not
+# EINTR. QNX's read(), readv(), write() and writev() pages allow EINTR
+# after a partial transfer when "the resource manager responsible for
+# that file doesn't report partial transfers"; the send(), sendmsg() and
+# recv() pages promise EINTR only "before any data was transmitted" or
+# "available". Measured 2026-10-18 on QNX 6.5 (x86) and BlackBerry 10
+# (arm), with a thread-directed signal and no SA_RESTART, as Go sends
+# them: TCP sockets (write, writev, send, sendmsg, read, readv, recv),
+# ptys (devc-pty, the master side, slave in raw mode; write, writev,
+# read, readv) and pipe writes on both, and pipe reads on BlackBerry 10,
+# returned the partial count once bytes had moved and EINTR only when
+# none had. Files and other terminal drivers (devc-con, devc-ser*) were
+# not measured; the manual's clause could still apply there. Non-blocking
+# socket and pty calls can return EINTR on QNX too (with nothing moved,
+# in every case measured), so the retry is needed on non-blocking
+# descriptors as well. A signal sent to a thread
+# blocked in io-pkt may also be delivered only when io-pkt completes the
+# call (1.36 s late once on BlackBerry 10): latency, not loss, and the
+# runtime's preemption signals see it too.
 my %qnx_norestart = map { $_ => 1 } qw(
 	closeFD
 	Nanosleep

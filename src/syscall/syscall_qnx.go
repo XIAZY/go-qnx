@@ -90,6 +90,8 @@ func RawSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errn
 // retryEINTR calls f until it does not fail with EINTR. QNX 6.5 has no
 // SA_RESTART, so calls that other systems restart transparently after a
 // signal fail here, and Go's signal handling sends signals routinely.
+// The generated wrappers retry the same way; mksyscall.pl says why
+// re-issuing a read or write from the front of the buffer is safe.
 func retryEINTR(f func() error) error {
 	for {
 		if err := f(); err != EINTR {
