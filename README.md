@@ -110,6 +110,47 @@ ARM, the exit-during-bind crash above reproduces as well. The socket-name
 hang did not reproduce there in 35,000 removals (QNX 6.5 hung within
 33,000 in every run), but the workaround is kept for it too.
 
+On a BlackBerry Passport running BlackBerry 10 (Broadcom Wi-Fi over
+SDIO, driver `devnp-bcm_dhd.so` 1.88.21, firmware 6.38.9.13), the Wi-Fi
+transmit path changes one byte of an outgoing frame after the network
+stack has computed its TCP checksum. The byte is always the second byte
+of the IP packet's last 32-bit word, whatever the packet: data segments
+of 64, 143, 524 and 1388 bytes and pure ACKs alike. Its new value varies
+with no pattern found. The damage depends on how many connections send
+at once, not on the rate: measured over about 200,000 packets each, one
+frame in 190,000 with one connection, one in 4,200 to 5,200 with four,
+and one in 2,700 with eight. The checksum no longer matches, so a peer
+that checks TCP checksums drops the frame and the phone resends it, and
+nothing shows. A peer that does not check them takes the damaged bytes:
+with TLS the record fails to authenticate and the connection ends with
+"bad record MAC" (one public CDN edge was measured to behave this way);
+without TLS the data is silently wrong. Nothing in Go is involved: the
+bytes Go hands to the system are intact in the phone's own capture,
+taken above the driver, and the same TLS test from QNX 6.5 on x86 and
+from Linux ran without a rejected record.
+
+Programs that talk to the network from BlackBerry 10 should therefore:
+use TLS for anything whose integrity matters, never plain TCP to a peer
+that may not check checksums; retry at the application level when a
+connection ends with a rejected record or drops in the middle of an
+upload, since TLS by design cannot repair a damaged record; and keep the
+number of connections sending at the same time small where it matters.
+
+Turning off the driver's packing of several queued frames into one
+transfer to the chip stops the rejected records. With the driver setting
+`txglomsize` at 1 instead of the shipped 10, the same test ran twice,
+200 iterations each, without a rejected record and at the same speed,
+where the phone as shipped gave 34 and 25 in runs of 200. As root on the
+phone:
+
+	/usr/sbin/dhd_bcm_dhd -i bcm0 txglomsize 1
+
+Running `/usr/sbin/dhd_bcm_dhd -i bcm0 txglomsize` reads it back and
+prints `1` (`10 (0xa)` as shipped). It is a runtime driver value, lost
+at reboot, so whoever owns the phone has to apply it at boot. This needs
+root on the phone; on a phone without it the setting cannot be changed
+and only the rules above apply.
+
 #### Changes since go1.27.1
 
 A build from `release-branch.go1.27` reports `go version
