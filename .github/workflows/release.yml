@@ -1,0 +1,16 @@
+# Publishes the release tarballs and the ghcr.io/xiazy/go-qnx image when a
+# go1.* tag is pushed or a release is published. The pipeline itself is
+# release-image.yml on master; GitHub reads this trigger from the tagged
+# commit, which is why it lives on the release branch.
+name: release
+on:
+  push:
+    tags: ['go1.*']
+  release:
+    types: [published]
+jobs:
+  release-image:
+    uses: XIAZY/go-qnx/.github/workflows/release-image.yml@master
+    permissions:
+      contents: write
+      packages: write
