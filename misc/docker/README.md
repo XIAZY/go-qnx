@@ -44,8 +44,11 @@ top-level README.
    for `qnx/386` and `qnx/arm` (`CGO_ENABLED=0 go build -trimpath`); the
    binaries from the two hosts must be identical, and they can be compared
    with builds of the same commit made elsewhere. Nothing is published.
-4. Running the `release-image` workflow by hand with the pinned tag publishes:
-   the GitHub release at that tag, then the image, installed from the release
-   assets by checksum. It refuses a tag other than the pinned one or a tag
-   that no longer points at the pinned commit, and never replaces an
-   existing release's assets.
+4. Pushing the pinned tag publishes. GitHub reads a tag push's workflow from
+   the tagged commit, so the release branch carries a small
+   `.github/workflows/release.yml` that calls `release-image.yml` on master.
+   The run must be for the pinned tag at the pinned commit. It creates the
+   GitHub release with the tarballs, then builds and pushes the image,
+   installed from the release assets by checksum. Publishing a release at
+   that tag by hand re-runs the checks, and assets a release already has are
+   never replaced.
