@@ -48,6 +48,10 @@ system as usual and set `GOOS` and `GOARCH`:
 
 Copy the resulting binary to the target and run it there.
 
+Prebuilt toolchains for Linux on amd64 and arm64, and a container image
+with one, `ghcr.io/xiazy/go-qnx`, are described in
+[misc/docker/README.md](misc/docker/README.md).
+
 For QNX 6.5 on x86, a toolchain that runs on QNX itself is built the same
 way, with `GOOS=qnx GOARCH=386 ./make.bash --force`, and lands in
 `bin/qnx_386`; copy the tree to the QNX machine and use that `go` there.

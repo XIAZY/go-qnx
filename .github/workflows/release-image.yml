@@ -1,0 +1,346 @@
+# Builds the go-qnx release tarballs from the tag and commit pinned in
+# misc/docker/versions.json, then the multi-arch image ghcr.io/<owner>/go-qnx
+# from those tarballs. The layout follows docker-library/golang.
+#
+# A pull request that changes the pipeline builds and tests everything and
+# publishes nothing; its image is built from its own tarballs, served locally.
+# A manual run (workflow_dispatch) with the pinned tag publishes: the GitHub
+# release at that tag (if it does not exist yet), then the image, installed
+# from the release assets by checksum.
+name: release-image
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/release-image.yml
+      - misc/docker/**
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'go-qnx tag to publish (must be the one pinned in misc/docker/versions.json)'
+        required: true
+
+defaults:
+  run:
+    shell: 'bash -Eeuo pipefail -x {0}'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  MAJOR: '1.27'
+  VERSIONS: misc/docker/versions.json
+  IMAGE: ghcr.io/${{ github.repository_owner }}/go-qnx
+  PUBLISH: ${{ github.event_name == 'workflow_dispatch' }}
+
+jobs:
+  dist:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.pin.outputs.version }}
+      tag: ${{ steps.pin.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: pipeline
+          persist-credentials: false
+
+      - name: Read the pin
+        id: pin
+        working-directory: pipeline
+        run: |
+          echo "version=$(jq -r --arg m "$MAJOR" '.[$m].version' "$VERSIONS")" >> "$GITHUB_OUTPUT"
+          echo "tag=$(jq -r --arg m "$MAJOR" '.[$m].source.tag' "$VERSIONS")" >> "$GITHUB_OUTPUT"
+          echo "commit=$(jq -r --arg m "$MAJOR" '.[$m].source.commit' "$VERSIONS")" >> "$GITHUB_OUTPUT"
+
+      - name: A manual run must name the pinned tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          [ "$INPUT_TAG" = '${{ steps.pin.outputs.tag }}' ] || {
+            echo "::error::input tag $INPUT_TAG is not the pinned tag ${{ steps.pin.outputs.tag }}"
+            exit 1
+          }
+
+      # Refuse to build if the tag has moved away from the pinned commit.
+      - name: Check the tag points at the pinned commit
+        run: |
+          tag='refs/tags/${{ steps.pin.outputs.tag }}'
+          refs="$(git ls-remote --tags 'https://github.com/${{ github.repository }}' "$tag" "$tag^{}")"
+          echo "$refs"
+          # an annotated tag also lists the commit it points at as ^{}; a
+          # lightweight tag lists only the commit
+          peeled="$(awk -v t="$tag^{}" '$2 == t { print $1 }' <<<"$refs")"
+          plain="$(awk -v t="$tag" '$2 == t { print $1 }' <<<"$refs")"
+          got="${peeled:-$plain}"
+          [ "$got" = '${{ steps.pin.outputs.commit }}' ] || {
+            echo "::error::tag ${{ steps.pin.outputs.tag }} is '$got', versions.json pins ${{ steps.pin.outputs.commit }}"
+            exit 1
+          }
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.pin.outputs.commit }}
+          path: go
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Check VERSION
+        run: |
+          [ "$(head -n1 go/VERSION)" = 'go${{ steps.pin.outputs.version }}' ]
+
+      # Any Go 1.24.6 or later bootstraps Go 1.27; the result does not depend
+      # on which one, since Go's builds are reproducible.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.2'
+          cache: false
+
+      - name: make.bash -distpack (linux/amd64, linux/arm64)
+        working-directory: go/src
+        run: |
+          versions="$GITHUB_WORKSPACE/pipeline/$VERSIONS"
+          boot="$(go env GOROOT)"
+          for arch in $(jq -r --arg m "$MAJOR" '.[$m].arches | to_entries[] | select(.value.supported) | .key' "$versions"); do
+            envs="$(jq -r --arg m "$MAJOR" --arg a "$arch" '.[$m].arches[$a].env | to_entries | map("\(.key)=\(.value)") | join(" ")' "$versions")"
+            env -u GOROOT -u GOPATH -u GOFLAGS \
+              GOROOT_BOOTSTRAP="$boot" GOTOOLCHAIN=local CGO_ENABLED=0 $envs \
+              ./make.bash -distpack
+            # make.bash rebuilds from clean, and dist's clean removes
+            # pkg/distpack, so keep each run's archives before the next
+            mkdir -p "$GITHUB_WORKSPACE/distpack"
+            cp -p ../pkg/distpack/go*.tar.gz "$GITHUB_WORKSPACE/distpack/"
+          done
+          ls -l "$GITHUB_WORKSPACE/distpack"
+
+      - name: Checksums
+        working-directory: distpack
+        run: |
+          versions="$GITHUB_WORKSPACE/pipeline/$VERSIONS"
+          v='${{ steps.pin.outputs.version }}'
+          files=("go$v.src.tar.gz")
+          for arch in $(jq -r --arg m "$MAJOR" '.[$m].arches | to_entries[] | select(.value.supported) | .key' "$versions"); do
+            files+=("$(basename "$(jq -r --arg m "$MAJOR" --arg a "$arch" '.[$m].arches[$a].url' "$versions")")")
+          done
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          for f in "${files[@]}"; do
+            sha256sum "$f" | awk '{ print $1 }' > "$f.sha256"
+            cp "$f" "$f.sha256" "$GITHUB_WORKSPACE/out/"
+          done
+          (cd "$GITHUB_WORKSPACE/out" && sha256sum *.tar.gz | tee -a "$GITHUB_STEP_SUMMARY")
+
+      # The checksums in versions.json come from an independent rebuild;
+      # every CI build must reproduce them byte for byte.
+      - name: Compare with versions.json
+        working-directory: out
+        run: |
+          versions="$GITHUB_WORKSPACE/pipeline/$VERSIONS"
+          v='${{ steps.pin.outputs.version }}'
+          check() {
+            want="$1" file="$2"
+            if [ "$want" = 'null' ]; then
+              echo "::error::no checksum pinned for $file (got $(cat "$file.sha256")); run update.sh"
+              exit 1
+            fi
+            [ "$(cat "$file.sha256")" = "$want" ] || { echo "::error::$file does not reproduce"; exit 1; }
+          }
+          check "$(jq -r --arg m "$MAJOR" '.[$m].src.sha256' "$versions")" "go$v.src.tar.gz"
+          for arch in $(jq -r --arg m "$MAJOR" '.[$m].arches | to_entries[] | select(.value.supported) | .key' "$versions"); do
+            check "$(jq -r --arg m "$MAJOR" --arg a "$arch" '.[$m].arches[$a].sha256' "$versions")" \
+              "$(basename "$(jq -r --arg m "$MAJOR" --arg a "$arch" '.[$m].arches[$a].url' "$versions")")"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: out/*
+          retention-days: 7
+
+  release:
+    if: github.event_name == 'workflow_dispatch'
+    needs: dist
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: out
+      # The release sits on the existing go-qnx tag. An existing release is
+      # never overwritten: its assets must match.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.dist.outputs.tag }}
+        working-directory: out
+        run: |
+          if gh release view "$TAG" -R '${{ github.repository }}' >/dev/null 2>&1; then
+            mkdir ../existing
+            gh release download "$TAG" -R '${{ github.repository }}' -D ../existing -p '*.sha256'
+            for f in *.sha256; do cmp "$f" "../existing/$f"; done
+          else
+            gh release create "$TAG" -R '${{ github.repository }}' \
+              --verify-tag \
+              --title "$TAG" \
+              --notes "Go with the QNX ports, built from tag $TAG with make.bash -distpack. Install like an official Go release. With CGO_ENABLED=0, GOOS=qnx GOARCH=386 or GOARCH=arm cross-compiles without a QNX SDK. Image: ghcr.io/xiazy/go-qnx:${TAG#go}. This repository's $TAG is upstream's $TAG plus the QNX port: the files share Google's names, not their bytes; check them against the .sha256 files." \
+              *
+          fi
+
+  image:
+    if: always() && needs.dist.result == 'success' && (needs.release.result == 'success' || needs.release.result == 'skipped')
+    needs: [dist, release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+            goarch: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            goarch: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Generate the Dockerfile
+        run: |
+          misc/docker/apply-templates.sh
+          git diff --exit-code   # the committed Dockerfile must be the generated one
+      - name: Image name
+        id: name
+        # GHCR names must be lowercase.
+        run: echo "image=${IMAGE,,}" >> "$GITHUB_OUTPUT"
+
+      # Pull request: build from this run's tarballs, served on localhost.
+      - uses: actions/download-artifact@v4
+        if: env.PUBLISH != 'true'
+        with:
+          name: dist
+          path: out
+      - name: Build (pull request)
+        if: env.PUBLISH != 'true'
+        run: |
+          (cd out && python3 -m http.server 8000 --bind 127.0.0.1 >/dev/null 2>&1 &)
+          sleep 1
+          docker build --network host \
+            --build-arg GO_DOWNLOAD_BASE=http://127.0.0.1:8000 \
+            -t go-qnx:test "misc/docker/$MAJOR/bookworm"
+
+      # Manual run: build from the published release assets, push by digest.
+      - uses: docker/setup-buildx-action@v3
+        if: env.PUBLISH == 'true'
+      - uses: docker/login-action@v3
+        if: env.PUBLISH == 'true'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build (publish)
+        if: env.PUBLISH == 'true'
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: misc/docker/${{ env.MAJOR }}/bookworm
+          platforms: ${{ matrix.platform }}
+          provenance: mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.dist.outputs.version }}
+            org.opencontainers.image.licenses=BSD-3-Clause
+          outputs: type=image,name=${{ steps.name.outputs.image }},push-by-digest=true,name-canonical=true,push=true
+      - name: Pull the pushed image for the test
+        if: env.PUBLISH == 'true'
+        run: |
+          docker pull '${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}'
+          docker tag '${{ steps.name.outputs.image }}@${{ steps.build.outputs.digest }}' go-qnx:test
+
+      # Cross-build the hello for both QNX targets inside the image; the
+      # binaries are compared across hosts below and with builds of the same
+      # commit made elsewhere.
+      - name: Test
+        run: |
+          mkdir hello-out
+          docker run --rm -v "$PWD/misc/docker/test/hello:/src:ro" -v "$PWD/hello-out:/out" -w /src go-qnx:test sh -euxc '
+            go version
+            CGO_ENABLED=0 GOOS=qnx GOARCH=386 go build -trimpath -o /out/hello-qnx-386 .
+            CGO_ENABLED=0 GOOS=qnx GOARCH=arm GOARM=7 go build -trimpath -o /out/hello-qnx-arm .
+            CGO_ENABLED=0 go build -trimpath -o /out/hello-linux .
+            /out/hello-linux
+          '
+          (cd hello-out && sha256sum hello-qnx-* | tee -a "$GITHUB_STEP_SUMMARY")
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hello-${{ matrix.goarch }}
+          path: hello-out/hello-qnx-*
+
+      - name: Save digest
+        if: env.PUBLISH == 'true'
+        run: |
+          mkdir -p /tmp/digests
+          digest='${{ steps.build.outputs.digest }}'
+          touch "/tmp/digests/${digest#sha256:}"
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLISH == 'true'
+        with:
+          name: digest-${{ matrix.goarch }}
+          path: /tmp/digests/*
+          retention-days: 1
+
+  # The images built on the amd64 and the arm64 runner must cross-compile
+  # identical QNX binaries: a toolchain that differs by host stops here,
+  # in pull requests as well as before publishing.
+  compare:
+    # release is skipped in pull requests; without always() that skip would
+    # skip this job too
+    if: always() && needs.image.result == 'success'
+    needs: image
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: hello-*
+          path: hello
+      - name: Compare the hello builds across hosts
+        run: |
+          cmp hello/hello-amd64/hello-qnx-386 hello/hello-arm64/hello-qnx-386
+          cmp hello/hello-amd64/hello-qnx-arm hello/hello-arm64/hello-qnx-arm
+          sha256sum hello/*/hello-qnx-* | tee -a "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    if: always() && github.event_name == 'workflow_dispatch' && needs.dist.result == 'success' && needs.image.result == 'success' && needs.compare.result == 'success'
+    needs: [dist, image, compare]
+    runs-on: ubuntu-24.04
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: digest-*
+          path: /tmp/digests
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish the multi-arch tags
+        working-directory: /tmp/digests
+        run: |
+          image="${IMAGE,,}"
+          v='${{ needs.dist.outputs.version }}'
+          docker buildx imagetools create \
+            -t "$image:$v" -t "$image:$MAJOR" -t "$image:latest" \
+            $(printf "$image@sha256:%s " *)
+          docker buildx imagetools inspect "$image:$v"

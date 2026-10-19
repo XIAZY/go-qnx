@@ -1,0 +1,39 @@
+{
+  "1.27": {
+    "version": "1.27.2",
+    "source": {
+      "repository": "https://github.com/XIAZY/go-qnx",
+      "tag": "go1.27.2",
+      "commit": "47e57a8962a3e67449ca8005960c6b34cffd32ca"
+    },
+    "src": {
+      "url": "https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.src.tar.gz",
+      "sha256": "389f4ce70b0f60798bb0ebfef06cd63b877523ce1f38edbde694b69ebdfdc6c1"
+    },
+    "arches": {
+      "amd64": {
+        "url": "https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.linux-amd64.tar.gz",
+        "sha256": "732674419dd012d65c2c94816b4ffa133caafec6a5bc1850cb85677a5fab7c7e",
+        "env": {
+          "GOOS": "linux",
+          "GOARCH": "amd64",
+          "GOAMD64": "v1"
+        },
+        "supported": true
+      },
+      "arm64v8": {
+        "url": "https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.linux-arm64.tar.gz",
+        "sha256": "ddec8d5b37eb84bae566f5a096fb3acd7ecd727362b1fe501001304c2fd154ed",
+        "env": {
+          "GOOS": "linux",
+          "GOARCH": "arm64",
+          "GOARM64": "v8.0"
+        },
+        "supported": true
+      }
+    },
+    "variants": [
+      "bookworm"
+    ]
+  }
+}
