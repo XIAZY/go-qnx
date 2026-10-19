@@ -4,7 +4,7 @@
     "source": {
       "repository": "https://github.com/XIAZY/go-qnx",
       "tag": "go1.27.2",
-      "commit": "47e57a8962a3e67449ca8005960c6b34cffd32ca"
+      "commit": "dea1d777802b743fec7b79deac37b560a5a737a9"
     },
     "src": {
       "url": "https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.src.tar.gz",

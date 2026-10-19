@@ -4,9 +4,13 @@
 #
 # A pull request that changes the pipeline builds and tests everything and
 # publishes nothing; its image is built from its own tarballs, served locally.
-# A manual run (workflow_dispatch) with the pinned tag publishes: the GitHub
-# release at that tag (if it does not exist yet), then the image, installed
-# from the release assets by checksum.
+# Publishing is triggered from the release branch: GitHub reads a tag push's
+# or a release's workflow from the tagged commit, so .github/workflows/
+# release.yml there calls this workflow (workflow_call) when a go1.* tag is
+# pushed or a release is published. In that mode the run must be for the
+# pinned tag at the pinned commit; it creates the GitHub release if needed,
+# uploads the tarballs unless the release already has them, then builds the
+# image, installed from the release assets by checksum.
 name: release-image
 
 on:
@@ -14,11 +18,7 @@ on:
     paths:
       - .github/workflows/release-image.yml
       - misc/docker/**
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'go-qnx tag to publish (must be the one pinned in misc/docker/versions.json)'
-        required: true
+  workflow_call:
 
 defaults:
   run:
@@ -35,7 +35,8 @@ env:
   MAJOR: '1.27'
   VERSIONS: misc/docker/versions.json
   IMAGE: ghcr.io/${{ github.repository_owner }}/go-qnx
-  PUBLISH: ${{ github.event_name == 'workflow_dispatch' }}
+  # in a called workflow github.event_name is the caller's: push or release
+  PUBLISH: ${{ github.event_name != 'pull_request' }}
 
 jobs:
   dist:
@@ -44,8 +45,11 @@ jobs:
       version: ${{ steps.pin.outputs.version }}
       tag: ${{ steps.pin.outputs.tag }}
     steps:
+      # When publishing, github.sha is the tagged commit, the Go tree; the
+      # pipeline's own files come from master.
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name != 'pull_request' && 'master' || '' }}
           path: pipeline
           persist-credentials: false
 
@@ -57,29 +61,18 @@ jobs:
           echo "tag=$(jq -r --arg m "$MAJOR" '.[$m].source.tag' "$VERSIONS")" >> "$GITHUB_OUTPUT"
           echo "commit=$(jq -r --arg m "$MAJOR" '.[$m].source.commit' "$VERSIONS")" >> "$GITHUB_OUTPUT"
 
-      - name: A manual run must name the pinned tag
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          INPUT_TAG: ${{ inputs.tag }}
+      # Publish only for the pinned tag at the pinned commit. A pull request
+      # checks neither, so it can be green before the tag moves; it builds
+      # the pinned commit all the same.
+      - name: Publishing must be for the pinned tag and commit
+        if: env.PUBLISH == 'true'
         run: |
-          [ "$INPUT_TAG" = '${{ steps.pin.outputs.tag }}' ] || {
-            echo "::error::input tag $INPUT_TAG is not the pinned tag ${{ steps.pin.outputs.tag }}"
+          [ '${{ github.ref }}' = 'refs/tags/${{ steps.pin.outputs.tag }}' ] || {
+            echo "::error::run is for ${{ github.ref }}, versions.json pins refs/tags/${{ steps.pin.outputs.tag }}"
             exit 1
           }
-
-      # Refuse to build if the tag has moved away from the pinned commit.
-      - name: Check the tag points at the pinned commit
-        run: |
-          tag='refs/tags/${{ steps.pin.outputs.tag }}'
-          refs="$(git ls-remote --tags 'https://github.com/${{ github.repository }}' "$tag" "$tag^{}")"
-          echo "$refs"
-          # an annotated tag also lists the commit it points at as ^{}; a
-          # lightweight tag lists only the commit
-          peeled="$(awk -v t="$tag^{}" '$2 == t { print $1 }' <<<"$refs")"
-          plain="$(awk -v t="$tag" '$2 == t { print $1 }' <<<"$refs")"
-          got="${peeled:-$plain}"
-          [ "$got" = '${{ steps.pin.outputs.commit }}' ] || {
-            echo "::error::tag ${{ steps.pin.outputs.tag }} is '$got', versions.json pins ${{ steps.pin.outputs.commit }}"
+          [ '${{ github.sha }}' = '${{ steps.pin.outputs.commit }}' ] || {
+            echo "::error::run is for commit ${{ github.sha }}, versions.json pins ${{ steps.pin.outputs.commit }}"
             exit 1
           }
 
@@ -162,7 +155,7 @@ jobs:
           retention-days: 7
 
   release:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name != 'pull_request'
     needs: dist
     runs-on: ubuntu-24.04
     permissions:
@@ -172,24 +165,31 @@ jobs:
         with:
           name: dist
           path: out
-      # The release sits on the existing go-qnx tag. An existing release is
-      # never overwritten: its assets must match.
-      - name: Publish the release
+      # A tag push creates the release with the assets; a release published
+      # by hand gets them uploaded. Assets are never overwritten: if the
+      # release already has assets, ours must match them. (A release created
+      # with the workflow's own token starts no further run.)
+      - name: Create or fill the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.dist.outputs.tag }}
         working-directory: out
         run: |
-          if gh release view "$TAG" -R '${{ github.repository }}' >/dev/null 2>&1; then
-            mkdir ../existing
-            gh release download "$TAG" -R '${{ github.repository }}' -D ../existing -p '*.sha256'
-            for f in *.sha256; do cmp "$f" "../existing/$f"; done
-          else
+          if ! gh release view "$TAG" -R '${{ github.repository }}' >/dev/null 2>&1; then
             gh release create "$TAG" -R '${{ github.repository }}' \
               --verify-tag \
               --title "$TAG" \
               --notes "Go with the QNX ports, built from tag $TAG with make.bash -distpack. Install like an official Go release. With CGO_ENABLED=0, GOOS=qnx GOARCH=386 or GOARCH=arm cross-compiles without a QNX SDK. Image: ghcr.io/xiazy/go-qnx:${TAG#go}. This repository's $TAG is upstream's $TAG plus the QNX port: the files share Google's names, not their bytes; check them against the .sha256 files." \
               *
+            exit 0
+          fi
+          assets="$(gh release view "$TAG" -R '${{ github.repository }}' --json assets -q '.assets[].name')"
+          if [ -n "$assets" ]; then
+            mkdir ../existing
+            gh release download "$TAG" -R '${{ github.repository }}' -D ../existing -p '*.sha256'
+            for f in *.sha256; do cmp "$f" "../existing/$f"; done
+          else
+            gh release upload "$TAG" -R '${{ github.repository }}' *
           fi
 
   image:
@@ -212,6 +212,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event_name != 'pull_request' && 'master' || '' }}
           persist-credentials: false
       - name: Generate the Dockerfile
         run: |
@@ -237,7 +238,7 @@ jobs:
             --build-arg GO_DOWNLOAD_BASE=http://127.0.0.1:8000 \
             -t go-qnx:test "misc/docker/$MAJOR/bookworm"
 
-      # Manual run: build from the published release assets, push by digest.
+      # Release: build from the published release assets, push by digest.
       - uses: docker/setup-buildx-action@v3
         if: env.PUBLISH == 'true'
       - uses: docker/login-action@v3
@@ -318,7 +319,7 @@ jobs:
           sha256sum hello/*/hello-qnx-* | tee -a "$GITHUB_STEP_SUMMARY"
 
   publish:
-    if: always() && github.event_name == 'workflow_dispatch' && needs.dist.result == 'success' && needs.image.result == 'success' && needs.compare.result == 'success'
+    if: always() && github.event_name != 'pull_request' && needs.dist.result == 'success' && needs.image.result == 'success' && needs.compare.result == 'success'
     needs: [dist, image, compare]
     runs-on: ubuntu-24.04
     permissions:
