@@ -114,6 +114,25 @@ ARM, the exit-during-bind crash above reproduces as well. The socket-name
 hang did not reproduce there in 35,000 removals (QNX 6.5 hung within
 33,000 in every run), but the workaround is kept for it too.
 
+On QNX 6.5, the system stops responding until a reboot if one thread
+faults in pages of a file through a memory mapping while another thread
+of the same process reads the same file with `read`. Private and shared
+mappings both trigger it, on one CPU and on two; the disk driver and the
+kernel's pager end up waiting on each other. It is of the same family as
+known issue Ref# 62483 in the QNX SDP 6.5.0 release notes. A running
+program's executable and shared libraries are such mappings, so a
+program that reads its own executable while running from disk can
+trigger it. The Go toolchain's commands (the go command, the compiler
+and the linker) map files as well; on QNX they read them instead, and
+leave telemetry off, since its counter files are shared through
+mappings. Go programs that map files themselves, with `syscall.Mmap` or
+`golang.org/x/sys/unix`, remain exposed. There are two
+workarounds: run programs from `/dev/shmem`, which is memory, so a copy
+there is lost at reboot; or start `procnto` with `-mL`, the release
+notes' workaround, which makes all memory of every program resident as
+soon as it is mapped, at a cost in memory not measured for Go programs.
+BlackBerry 10 has not been tested for it.
+
 On a BlackBerry Passport running BlackBerry 10 (Broadcom Wi-Fi over
 SDIO, driver `devnp-bcm_dhd.so` 1.88.21, firmware 6.38.9.13), the Wi-Fi
 transmit path changes one byte of an outgoing frame after the network
@@ -226,6 +245,9 @@ Fixed, on both architectures unless noted:
 - An HTTP client timeout is reported as the Client.Timeout error, not a bare
   context error, when the clock reads exactly the deadline. General fix.
 - Child processes with closed descriptor slots start via spawn, not vfork.
+- The go command, the compiler and the linker read files instead of mapping
+  them, and telemetry stays off, because of the QNX 6.5 mapping deadlock
+  above.
 
 Known limitations, besides the Unix-socket hazards above:
 
