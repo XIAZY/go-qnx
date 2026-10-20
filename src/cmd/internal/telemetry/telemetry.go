@@ -29,6 +29,9 @@ func MaybeParent() {
 	if !counter.OpenCalled() || !maybeChildCalled {
 		panic("MaybeParent must be called after OpenCounters and MaybeChild")
 	}
+	if counter.DisabledOnPlatform {
+		return
+	}
 	telemetry.Start(telemetry.Config{
 		Upload:       true,
 		TelemetryDir: os.Getenv("TEST_TELEMETRY_DIR"),
@@ -41,6 +44,9 @@ func MaybeParent() {
 // call telemetry.OpenCounters immediately when it starts.
 func MaybeChild() {
 	maybeChildCalled = true
+	if counter.DisabledOnPlatform {
+		return
+	}
 	telemetry.MaybeChild(telemetry.Config{
 		Upload:       true,
 		TelemetryDir: os.Getenv("TEST_TELEMETRY_DIR"),

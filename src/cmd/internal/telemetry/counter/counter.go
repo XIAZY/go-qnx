@@ -9,9 +9,21 @@ package counter
 import (
 	"flag"
 	"os"
+	"runtime"
 
 	"golang.org/x/telemetry/counter"
 )
+
+// DisabledOnPlatform reports whether the go command and the other cmd
+// tools leave telemetry off on this platform, in addition to the
+// platforms on which golang.org/x/telemetry disables itself.
+//
+// On QNX, faulting in pages of a file mapping while another thread of the
+// same process reads the same file can deadlock the system (QNX SDP 6.5.0
+// release notes, known issue Ref# 62483 and related). The counter files
+// are shared between processes through a mapping, so they are never
+// opened there.
+const DisabledOnPlatform = runtime.GOOS == "qnx"
 
 var openCalled bool
 
@@ -21,6 +33,9 @@ func OpenCalled() bool { return openCalled }
 // on the current platform (and does nothing otherwise).
 func Open() {
 	openCalled = true
+	if DisabledOnPlatform {
+		return
+	}
 	counter.OpenDir(os.Getenv("TEST_TELEMETRY_DIR"))
 }
 
