@@ -122,28 +122,31 @@ the kernel's pager end up waiting on each other. This is known issue
 Ref# 62483 in the QNX SDP 6.5.0 release notes. Private and shared
 mappings both trigger it, on one CPU and on two; memory that `mmap` has
 already committed still counts as untouched; touching the buffer before
-the read prevents it. A read of a different file can also freeze the
-system (3 of 6 runs in testing), by a mechanism not yet known; whether
-touching the buffer first prevents it is not yet shown. A running
-program's executable and shared libraries are such mappings, so a
-program that reads its own executable while running from disk can
-trigger it.
+the read prevents it. A running program's executable and shared
+libraries are such mappings, so a program that reads its own executable
+while running from disk can trigger it. A read of a different file into
+an untouched buffer can also freeze the system. In testing, reads into
+untouched buffers froze it in 7 of 12 runs and reads into touched
+buffers in none of 12. The order of events inside the kernel has not
+been shown.
 
 On QNX the Go runtime therefore writes one byte to each page of the
 memory it hands out, the heap and goroutine stacks, before the program
-can use it. This costs page faults taken earlier, no memory: about
-0.4 ms per MB on QNX 6.5 and 1.7 ms per MB on BlackBerry 10, the first
-time the memory is used. Thread stacks and C memory under cgo are not
+can use it. This costs page faults taken earlier, no memory: about 0.4
+ms per MB on QNX 6.5 and 1.7 ms per MB on BlackBerry 10, the first time
+the memory is used. Thread stacks and C memory under cgo are not
 covered, nor is memory a program maps itself with `syscall.Mmap` or
 `golang.org/x/sys/unix`. The Go toolchain's commands (the go command,
 the compiler and the linker) map files as well; on QNX they read them
 instead, and leave telemetry off, since its counter files are shared
 through mappings. For other programs there are two workarounds: run them
 from `/dev/shmem`, which is memory, so a copy there is lost at reboot;
-or start `procnto` with `-mL`, the release notes' workaround, which makes
-all memory of every program resident as soon as it is mapped, at a cost
-in memory not measured for Go programs. BlackBerry 10 has not been
-tested for the deadlock; the runtime touches memory there too.
+or start `procnto` with `-mL`, the release notes' workaround, which
+makes memory resident as soon as it is mapped, except mappings made with
+`MAP_LAZY`; the freeze did not occur in 7 runs with it (4 of the
+same-file case, 3 of the different-file case), and its cost in memory
+was not measured for Go programs. BlackBerry 10 has not been tested for
+the deadlock; the runtime touches memory there too.
 
 To keep a Go program's own pages off the disk entirely, run it from
 `/dev/shmem` with a copy of `/lib/libsocket.so.3` there and
