@@ -141,12 +141,14 @@ the compiler and the linker) map files as well; on QNX they read them
 instead, and leave telemetry off, since its counter files are shared
 through mappings. For other programs there are two workarounds: run them
 from `/dev/shmem`, which is memory, so a copy there is lost at reboot;
-or start `procnto` with `-mL`, the release notes' workaround, which
-makes memory resident as soon as it is mapped, except mappings made with
-`MAP_LAZY`; the freeze did not occur in 7 runs with it (4 of the
-same-file case, 3 of the different-file case), and its cost in memory
-was not measured for Go programs. BlackBerry 10 has not been tested for
-the deadlock; the runtime touches memory there too.
+or start `procnto` with `-mL`, the release notes' workaround, which QNX
+documents as making memory resident as soon as it is mapped. In testing,
+a file mapped without `MAP_LAZY`, as program text is, was read in whole
+by `mmap` before it returned and never paged in later; a file mapped
+with `MAP_LAZY` still paged in under it, and with such a file the
+different-file case did not freeze in 3 runs, against 5 of 9 without it.
+Its cost in memory was not measured for Go programs. BlackBerry 10 has
+not been tested for the deadlock; the runtime touches memory there too.
 
 To keep a Go program's own pages off the disk entirely, run it from
 `/dev/shmem` with a copy of `/lib/libsocket.so.3` there and
