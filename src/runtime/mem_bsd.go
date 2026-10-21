@@ -80,6 +80,17 @@ func sysUsedOS(v unsafe.Pointer, n uintptr) {
 			print("runtime: mmap(", v, ", ", n, ") returned ", p, ", ", err, "\n")
 			throw("runtime: cannot commit pages")
 		}
+		// Fault the pages in now. On QNX 6.5 the system can deadlock
+		// when a server such as the disk driver replies into a page
+		// that the client has not touched yet while another thread of
+		// the client waits on that server for a page-in (QNX SDP 6.5.0
+		// release notes, known issue Ref# 62483). Memory committed by
+		// mmap still counts as untouched. The heap and goroutine stacks
+		// get their memory here, so touch each page once: this costs
+		// the page faults, taken earlier, but no extra memory.
+		for off := uintptr(0); off < n; off += physPageSize {
+			*(*byte)(add(v, off)) = 0
+		}
 	}
 }
 

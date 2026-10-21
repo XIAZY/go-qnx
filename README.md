@@ -114,24 +114,42 @@ ARM, the exit-during-bind crash above reproduces as well. The socket-name
 hang did not reproduce there in 35,000 removals (QNX 6.5 hung within
 33,000 in every run), but the workaround is kept for it too.
 
-On QNX 6.5, the system stops responding until a reboot if one thread
-faults in pages of a file through a memory mapping while another thread
-of the same process reads the same file with `read`. Private and shared
-mappings both trigger it, on one CPU and on two; the disk driver and the
-kernel's pager end up waiting on each other. It is of the same family as
-known issue Ref# 62483 in the QNX SDP 6.5.0 release notes. A running
+On QNX 6.5, the system stops responding until a reboot if one thread of
+a process reads a file with `read` into memory it has not touched yet
+while another thread of the same process pages in the same file through
+a memory mapping: the disk driver, replying into the untouched page, and
+the kernel's pager end up waiting on each other. This is known issue
+Ref# 62483 in the QNX SDP 6.5.0 release notes. Private and shared
+mappings both trigger it, on one CPU and on two; memory that `mmap` has
+already committed still counts as untouched; touching the buffer before
+the read prevents it. A read of a different file can also freeze the
+system (3 of 6 runs in testing), by a mechanism not yet known; whether
+touching the buffer first prevents it is not yet shown. A running
 program's executable and shared libraries are such mappings, so a
 program that reads its own executable while running from disk can
-trigger it. The Go toolchain's commands (the go command, the compiler
-and the linker) map files as well; on QNX they read them instead, and
-leave telemetry off, since its counter files are shared through
-mappings. Go programs that map files themselves, with `syscall.Mmap` or
-`golang.org/x/sys/unix`, remain exposed. There are two
-workarounds: run programs from `/dev/shmem`, which is memory, so a copy
-there is lost at reboot; or start `procnto` with `-mL`, the release
-notes' workaround, which makes all memory of every program resident as
-soon as it is mapped, at a cost in memory not measured for Go programs.
-BlackBerry 10 has not been tested for it.
+trigger it.
+
+On QNX the Go runtime therefore writes one byte to each page of the
+memory it hands out, the heap and goroutine stacks, before the program
+can use it. This costs page faults taken earlier, no memory: about
+0.4 ms per MB on QNX 6.5 and 1.7 ms per MB on BlackBerry 10, the first
+time the memory is used. Thread stacks and C memory under cgo are not
+covered, nor is memory a program maps itself with `syscall.Mmap` or
+`golang.org/x/sys/unix`. The Go toolchain's commands (the go command,
+the compiler and the linker) map files as well; on QNX they read them
+instead, and leave telemetry off, since its counter files are shared
+through mappings. For other programs there are two workarounds: run them
+from `/dev/shmem`, which is memory, so a copy there is lost at reboot;
+or start `procnto` with `-mL`, the release notes' workaround, which makes
+all memory of every program resident as soon as it is mapped, at a cost
+in memory not measured for Go programs. BlackBerry 10 has not been
+tested for the deadlock; the runtime touches memory there too.
+
+To keep a Go program's own pages off the disk entirely, run it from
+`/dev/shmem` with a copy of `/lib/libsocket.so.3` there and
+`LD_LIBRARY_PATH=/dev/shmem`; libc came from the boot image, in memory,
+on the system tested. Starting the program once with `DL_DEBUG=libs` set
+shows where each library is loaded from.
 
 On a BlackBerry Passport running BlackBerry 10 (Broadcom Wi-Fi over
 SDIO, driver `devnp-bcm_dhd.so` 1.88.21, firmware 6.38.9.13), the Wi-Fi
@@ -248,6 +266,8 @@ Fixed, on both architectures unless noted:
 - The go command, the compiler and the linker read files instead of mapping
   them, and telemetry stays off, because of the QNX 6.5 mapping deadlock
   above.
+- The runtime writes one byte to each page of heap and stack memory before
+  handing it out, because of the same deadlock.
 
 Known limitations, besides the Unix-socket hazards above:
 
