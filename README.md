@@ -127,8 +127,10 @@ libraries are such mappings, so a program that reads its own executable
 while running from disk can trigger it. A read of a different file into
 an untouched buffer can also freeze the system. In testing, reads into
 untouched buffers froze it in 7 of 12 runs and reads into touched
-buffers in none of 12. The order of events inside the kernel has not
-been shown.
+buffers in none of 12. A write to a file from an untouched buffer can
+freeze it as well: in testing, writes from untouched buffers froze it in
+3 of 3 runs, and writes from buffers whose pages had first been read in
+none of 3. The order of events inside the kernel has not been shown.
 
 On QNX the Go runtime therefore writes one byte to each page of the
 memory it hands out, the heap and goroutine stacks, before the program
