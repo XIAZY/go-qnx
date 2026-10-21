@@ -143,12 +143,14 @@ through mappings. For other programs there are two workarounds: run them
 from `/dev/shmem`, which is memory, so a copy there is lost at reboot;
 or start `procnto` with `-mL`, the release notes' workaround, which QNX
 documents as making memory resident as soon as it is mapped. In testing,
-a file mapped without `MAP_LAZY`, as program text is, was read in whole
-by `mmap` before it returned and never paged in later; a file mapped
-with `MAP_LAZY` still paged in under it, and with such a file the
-different-file case did not freeze in 3 runs, against 5 of 9 without it.
-Its cost in memory was not measured for Go programs. BlackBerry 10 has
-not been tested for the deadlock; the runtime touches memory there too.
+a file mapped privately without `MAP_LAZY` was read in whole by `mmap`
+before it returned and never paged in later. Program text and shared
+libraries are mapped shared without `MAP_LAZY`; whether they are read in
+whole the same way was not observed. A file mapped with `MAP_LAZY` still
+paged in under `-mL`, and with such a file the different-file case did
+not freeze in 3 runs, against 5 of 9 without it. Its cost in memory was
+not measured for Go programs. BlackBerry 10 has not been tested for the
+deadlock; the runtime touches memory there too.
 
 To keep a Go program's own pages off the disk entirely, run it from
 `/dev/shmem` with a copy of `/lib/libsocket.so.3` there and
