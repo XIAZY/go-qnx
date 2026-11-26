@@ -137,7 +137,23 @@ const _sunosEAGAIN = 11
 const _ENOMEM = 12
 
 func sysMapOS(v unsafe.Pointer, n uintptr, _ string) {
-	p, err := mmap(v, n, _PROT_READ|_PROT_WRITE, _MAP_ANON|_MAP_FIXED|_MAP_PRIVATE, -1, 0)
+	flags := int32(_MAP_ANON | _MAP_FIXED | _MAP_PRIVATE)
+	if GOOS == "qnx" && GOARCH == "arm" {
+		// An eager mapping takes its memory at once on QNX, which does
+		// not overcommit. mheap.grow maps the heap in chunks of
+		// pallocChunkPages pages (4 MB) and counts them as released,
+		// so up to that much would be committed but invisible to Go:
+		// neither the scavenger nor GOMEMLIMIT would see it. Map lazily
+		// instead. Every caller of sysMap reaches sysUsed before it
+		// touches the memory (allocSpan for scavenged pages, the
+		// persistent allocator, the 32-bit page allocator's summaries,
+		// user arena chunks), and sysUsedOS on QNX commits eagerly
+		// and touches each page, so running out of memory is still
+		// reported as ENOMEM there. qnx/386 is left as it was: it has
+		// not been tested with this.
+		flags = lazyFlags() | _MAP_FIXED
+	}
+	p, err := mmap(v, n, _PROT_READ|_PROT_WRITE, flags, -1, 0)
 	if err == _ENOMEM || ((GOOS == "solaris" || GOOS == "illumos") && err == _sunosEAGAIN) {
 		throw("runtime: out of memory")
 	}
