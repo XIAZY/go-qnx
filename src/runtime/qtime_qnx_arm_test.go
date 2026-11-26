@@ -6,6 +6,7 @@ package runtime_test
 
 import (
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 )
@@ -68,4 +69,80 @@ func TestQNXQtime(t *testing.T) {
 			last = n
 		}
 	})
+}
+
+// TestQNXCpupage runs goroutines on several threads for 2 s, so that
+// save_g and load_g, which read the control block directly when on, are
+// exercised on every goroutine switch: a wrong g would crash the run.
+func TestQNXCpupage(t *testing.T) {
+	on := runtime.QNXCpupageOn()
+	t.Logf("save_g/load_g read the control block directly: %v", on)
+	if !on {
+		t.Log("not on: this runs the libc __tls path")
+	}
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(4))
+
+	stop := make(chan struct{})
+	time.AfterFunc(2*time.Second, func() { close(stop) })
+	var wg sync.WaitGroup
+	var sink [8][]byte
+	chans := make([]chan int, 8)
+	for i := range chans {
+		chans[i] = make(chan int, 1)
+	}
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			in, out := chans[i], chans[(i+1)%8]
+			for n := 0; ; n++ {
+				select {
+				case v := <-in:
+					sink[i] = make([]byte, 64+n%256)
+					runtime.Gosched()
+					select {
+					case out <- v + 1:
+					case <-stop:
+						return
+					}
+				case <-stop:
+					return
+				}
+			}
+		}()
+	}
+	for i := 0; i < 8; i += 2 { // four tokens go round the ring
+		chans[i] <- 0
+	}
+	wg.Wait()
+
+	// Locked goroutines keep their thread, and each must see its own g's
+	// state however the others move between threads.
+	var lwg sync.WaitGroup
+	errs := make(chan string, 4)
+	for i := 0; i < 4; i++ {
+		lwg.Add(1)
+		go func() {
+			defer lwg.Done()
+			runtime.LockOSThread()
+			defer runtime.UnlockOSThread()
+			x := i * 1000
+			deadline := time.Now().Add(500 * time.Millisecond)
+			for n := 0; time.Now().Before(deadline); n++ {
+				x++
+				runtime.Gosched()
+				buf := make([]byte, 128)
+				buf[0] = byte(x)
+				if x != i*1000+n+1 || buf[0] != byte(x) {
+					errs <- "locked goroutine's state changed"
+					return
+				}
+			}
+		}()
+	}
+	lwg.Wait()
+	close(errs)
+	for e := range errs {
+		t.Error(e)
+	}
 }
