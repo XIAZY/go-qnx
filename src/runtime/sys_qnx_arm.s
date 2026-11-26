@@ -22,6 +22,51 @@
 	BL	libc___get_errno_ptr(SB); \
 	MOVW	(R0), R0
 
+// QLOAD loads the word at off(R0) into dst, after the load of prev: an
+// EOR of a register with itself is zero but depends on it, so adding it
+// to the address makes the load wait for prev's value (an address
+// dependency, which ARM orders without a barrier). See os_qnx_arm.go.
+#define QLOAD(prev, off, dst) \
+	EOR	prev, prev, R12; \
+	ADD	R0, R12, R12; \
+	MOVW	off(R12), dst
+
+// func qtimeLoadNsec(q uintptr) (nsec, stable uint64)
+// Reads the qtime entry's nsec (16) and then nsec_stable (72).
+TEXT runtime·qtimeLoadNsec(SB),NOSPLIT,$0-20
+	MOVW	q+0(FP), R0
+	MOVW	16(R0), R1
+	QLOAD(R1, 20, R2)
+	QLOAD(R2, 72, R3)
+	QLOAD(R3, 76, R4)
+	MOVW	R1, nsec_lo+4(FP)
+	MOVW	R2, nsec_hi+8(FP)
+	MOVW	R3, stable_lo+12(FP)
+	MOVW	R4, stable_hi+16(FP)
+	RET
+
+// func qtimeLoadWall(q uintptr) (tod1, nsec, stable, tod2 uint64)
+// Reads nsec_tod_adjust (8), nsec, nsec_stable and nsec_tod_adjust again.
+TEXT runtime·qtimeLoadWall(SB),NOSPLIT,$0-36
+	MOVW	q+0(FP), R0
+	MOVW	8(R0), R1
+	QLOAD(R1, 12, R2)
+	QLOAD(R2, 16, R3)
+	QLOAD(R3, 20, R4)
+	QLOAD(R4, 72, R5)
+	QLOAD(R5, 76, R6)
+	QLOAD(R6, 8, R7)
+	QLOAD(R7, 12, R8)
+	MOVW	R1, tod1_lo+4(FP)
+	MOVW	R2, tod1_hi+8(FP)
+	MOVW	R3, nsec_lo+12(FP)
+	MOVW	R4, nsec_hi+16(FP)
+	MOVW	R5, stable_lo+20(FP)
+	MOVW	R6, stable_hi+24(FP)
+	MOVW	R7, tod2_lo+28(FP)
+	MOVW	R8, tod2_hi+32(FP)
+	RET
+
 // qnxtlsbad reports that the __reserved1 slot of a thread's control
 // block, where g lives, was not zero before Go first used it, and exits.
 TEXT runtime·qnxtlsbad(SB),NOSPLIT|NOFRAME,$0
@@ -54,6 +99,21 @@ TEXT runtime·mstart_stub(SB),NOSPLIT,$0
 	MOVW	(0x24)(R0), R1
 	CMP	$0, R1
 	BL.NE	runtime·qnxtlsbad(SB)
+
+	// save_g and load_g read the control block through the cpupage once
+	// osinit has checked that on this thread's predecessor, m0. Check it
+	// on every new thread as well, before its first save_g, against
+	// __tls's answer in R0; on a mismatch go back to __tls everywhere.
+	MOVW	runtime·qnxCpupagePtr(SB), R1
+	CMP	$0, R1
+	B.EQ	cpupageok
+	MOVW	(R1), R1		// _cpupage_ptr
+	MOVW	(R1), R1		// cpupage_entry.tls
+	CMP	R0, R1
+	B.EQ	cpupageok
+	MOVW	$0, R1
+	MOVW	R1, runtime·qnxCpupagePtr(SB)
+cpupageok:
 
 	MOVW	m_g0(R4), g
 	BL	runtime·save_g(SB)

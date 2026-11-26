@@ -180,6 +180,11 @@ func qnxCyclesPerSec() uint64 {
 	return *(*uint64)(unsafe.Pointer(sp + uintptr(off)))
 }
 
+// qnxFastWalltime is not implemented on 386: walltime calls libc.
+//
+//go:nosplit
+func qnxFastWalltime() (sec int64, nsec int32, ok bool) { return 0, 0, false }
+
 // qnxCheckTSC is sysmon's check that the TSC rate still matches
 // CLOCK_MONOTONIC to within 5%, over windows of at least minWindow,
 // switching to CLOCK_MONOTONIC after two windows in a row are off.
