@@ -302,6 +302,38 @@ Tested:
   -short std` from prebuilt binaries: 377 packages; 3 timing tests fail under
   emulation's clock, the same with the process pinned to one CPU, and pass on
   real-time hardware.
+- BlackBerry 10 (qnx/arm), after the changes below: `runtime` (`-short`),
+  `time`, `os`, `net` and `syscall` on a BlackBerry Q10, each with the same
+  results as the tree without them.
+
+#### Performance on BlackBerry 10
+
+Measured on a BlackBerry Q10 (QNX 8.0.0, MSM8960) against the same tree
+without these changes:
+
+- nanotime and walltime read the kernel's clock from the system page instead
+  of calling clock_gettime, a kernel call: time.Now takes 326 ns, not 2115. A
+  read counts only when nsec equals nsec_stable, the copy the kernel keeps
+  for this, so a half-written value is never used whatever the tick length.
+  At start-up the runtime compares the page with clock_gettime and keeps
+  calling libc if they disagree or if the kernel does not keep nsec_stable.
+- save_g and load_g, which run on every goroutine switch and every libc call,
+  read the thread's control block through the cpupage, as libc's `__tls`
+  does, instead of calling it; each new thread first checks the two agree.
+  With the clock change, channel and scheduler benchmarks run 11-15% faster:
+  ChanSync 7.8 to 6.6 µs, PingPongHog 23.1 to 20.1 µs, CreateGoroutines 8.7 to
+  7.7 µs.
+- The heap is mapped lazily and committed span by span, so memory the heap
+  has not used yet takes no RAM: a program keeping 1 MB live has 3.2 MB of
+  data, not 5.7 MB. Committing a span of released memory makes one mmap call
+  instead of two, about 35 µs each, and an allocation-heavy program runs
+  15-25% faster.
+- Goroutine stacks reserve 1024 bytes for signal frames instead of 2048:
+  signal delivery used at most 528 bytes there. Goroutines that need up to
+  about 2 KB of stack keep a 4 KB stack instead of growing to 8 KB; 2000 of
+  them used 8.4 MB of stack instead of 16.4 MB.
+- Network I/O is bound by io-pkt: in a TCP benchmark 95% of the CPU samples
+  were in libc and the kernel, so these changes do not make it faster.
 
 ### Contributing
 
