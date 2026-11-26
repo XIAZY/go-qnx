@@ -62,35 +62,46 @@ func sysUnusedOS(v unsafe.Pointer, n uintptr) {
 }
 
 func sysUsedOS(v unsafe.Pointer, n uintptr) {
-	if GOOS == "qnx" {
-		// Take the memory back now, as Windows does, so that running
-		// out is reported here rather than as a SIGBUS on a lazy page
-		// later. The range holds no live data: the heap passes only
-		// free pages, whose contents need not be kept (freed pages are
-		// zeroed before reuse unless they were never used, and fresh
-		// pages are zero anyway), and other callers pass memory that
-		// was just mapped. Release it first so that the new mapping
-		// does not need the old pages' memory as well.
+}
+
+// qnxSysUsed is sysUsedOS on QNX, called from sysUsed. released reports that every page in
+// the range is released, either scavenged or never used since sysMap.
+func qnxSysUsed(v unsafe.Pointer, n uintptr, released bool) {
+	// Take the memory back now, as Windows does, so that running
+	// out is reported here rather than as a SIGBUS on a lazy page
+	// later. The range holds no live data: the heap passes only
+	// free pages, whose contents need not be kept (freed pages are
+	// zeroed before reuse unless they were never used, and fresh
+	// pages are zero anyway), and other callers pass memory that
+	// was just mapped. Release it first so that the new mapping
+	// does not need the old pages' memory as well.
+	//
+	// On qnx/arm, a range whose pages were all released holds no memory
+	// to release: sysUnusedOS and sysMapOS map released pages lazily.
+	// The release is then skipped, as a wasted kernel call: a lazy
+	// MAP_FIXED remap took 32-38 us on a BlackBerry Q10, against about
+	// 25 us for faulting in the two pages of a one-page span.
+	if !released || GOARCH != "arm" {
 		mmap(v, n, _PROT_READ|_PROT_WRITE, lazyFlags()|_MAP_FIXED, -1, 0)
-		p, err := mmap(v, n, _PROT_READ|_PROT_WRITE, _MAP_ANON|_MAP_FIXED|_MAP_PRIVATE, -1, 0)
-		if err == _ENOMEM {
-			throw("runtime: out of memory")
-		}
-		if p != v || err != 0 {
-			print("runtime: mmap(", v, ", ", n, ") returned ", p, ", ", err, "\n")
-			throw("runtime: cannot commit pages")
-		}
-		// Fault the pages in now. On QNX 6.5 the system can deadlock
-		// when a server such as the disk driver replies into a page
-		// that the client has not touched yet while another thread of
-		// the client waits on that server for a page-in (QNX SDP 6.5.0
-		// release notes, known issue Ref# 62483). Memory committed by
-		// mmap still counts as untouched. The heap and goroutine stacks
-		// get their memory here, so touch each page once: this costs
-		// the page faults, taken earlier, but no extra memory.
-		for off := uintptr(0); off < n; off += physPageSize {
-			*(*byte)(add(v, off)) = 0
-		}
+	}
+	p, err := mmap(v, n, _PROT_READ|_PROT_WRITE, _MAP_ANON|_MAP_FIXED|_MAP_PRIVATE, -1, 0)
+	if err == _ENOMEM {
+		throw("runtime: out of memory")
+	}
+	if p != v || err != 0 {
+		print("runtime: mmap(", v, ", ", n, ") returned ", p, ", ", err, "\n")
+		throw("runtime: cannot commit pages")
+	}
+	// Fault the pages in now. On QNX 6.5 the system can deadlock
+	// when a server such as the disk driver replies into a page
+	// that the client has not touched yet while another thread of
+	// the client waits on that server for a page-in (QNX SDP 6.5.0
+	// release notes, known issue Ref# 62483). Memory committed by
+	// mmap still counts as untouched. The heap and goroutine stacks
+	// get their memory here, so touch each page once: this costs
+	// the page faults, taken earlier, but no extra memory.
+	for off := uintptr(0); off < n; off += physPageSize {
+		*(*byte)(add(v, off)) = 0
 	}
 }
 
@@ -147,7 +158,7 @@ func sysMapOS(v unsafe.Pointer, n uintptr, _ string) {
 		// instead. Every caller of sysMap reaches sysUsed before it
 		// touches the memory (allocSpan for scavenged pages, the
 		// persistent allocator, the 32-bit page allocator's summaries,
-		// user arena chunks), and sysUsedOS on QNX commits eagerly
+		// user arena chunks), and qnxSysUsed commits eagerly
 		// and touches each page, so running out of memory is still
 		// reported as ENOMEM there. qnx/386 is left as it was: it has
 		// not been tested with this.
