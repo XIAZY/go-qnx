@@ -1860,7 +1860,7 @@ func startTheWorldWithSema(now int64, w worldStop) int64 {
 // via libcall.
 func usesLibcall() bool {
 	switch GOOS {
-	case "aix", "darwin", "illumos", "ios", "openbsd", "solaris", "windows":
+	case "aix", "darwin", "illumos", "ios", "openbsd", "qnx", "solaris", "windows":
 		return true
 	}
 	return false
