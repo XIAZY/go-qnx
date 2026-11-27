@@ -206,28 +206,28 @@ and only the rules above apply.
 The container image `ghcr.io/xiazy/go-qnx` holds this toolchain. It is
 public, for linux/amd64 and linux/arm64, and has the same layout as the
 official golang image: Go in `/usr/local/go`, `GOPATH=/go`,
-`GOTOOLCHAIN=local`. The tag `1.27.2` never changes, `1.27` follows the
+`GOTOOLCHAIN=local`. The tag `1.27.4` never changes, `1.27` follows the
 1.27 point releases, and `latest` is the newest release. To build in the
 current directory:
 
-	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.2 \
+	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.4 \
 		sh -c 'CGO_ENABLED=0 GOOS=qnx GOARCH=arm GOARM=7 go build -o app .'   # BlackBerry 10, ARM
-	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.2 \
+	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.4 \
 		sh -c 'CGO_ENABLED=0 GOOS=qnx GOARCH=386 go build -o app .'           # QNX 6.5, x86
 
 The same toolchain is on the
-[go1.27.2 release](https://github.com/XIAZY/go-qnx/releases/tag/go1.27.2)
-as `go1.27.2.linux-amd64.tar.gz` and `go1.27.2.linux-arm64.tar.gz`, with
-`go1.27.2.src.tar.gz`, each with a `.sha256` file beside it. Install one
+[go1.27.4 release](https://github.com/XIAZY/go-qnx/releases/tag/go1.27.4)
+as `go1.27.4.linux-amd64.tar.gz` and `go1.27.4.linux-arm64.tar.gz`, with
+`go1.27.4.src.tar.gz`, each with a `.sha256` file beside it. Install one
 like an official Go release:
 
-	curl -fLO https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.linux-amd64.tar.gz
-	echo "$(curl -fsL https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.linux-amd64.tar.gz.sha256)  go1.27.2.linux-amd64.tar.gz" | sha256sum -c
-	tar -C /usr/local -xzf go1.27.2.linux-amd64.tar.gz
+	curl -fLO https://github.com/XIAZY/go-qnx/releases/download/go1.27.4/go1.27.4.linux-amd64.tar.gz
+	echo "$(curl -fsL https://github.com/XIAZY/go-qnx/releases/download/go1.27.4/go1.27.4.linux-amd64.tar.gz.sha256)  go1.27.4.linux-amd64.tar.gz" | sha256sum -c
+	tar -C /usr/local -xzf go1.27.4.linux-amd64.tar.gz
 
-These files have the names of Google's go1.27.2 release but not its
-bytes: this repository's go1.27.2 is upstream go1.27.2 plus the QNX port,
-and `go version` prints go1.27.2 for both. Pin them by checksum, not by
+These files have the names of Google's go1.27.4 release but not its
+bytes: this repository's go1.27.4 is upstream go1.27.4 plus the QNX port,
+and `go version` prints go1.27.4 for both. Pin them by checksum, not by
 version, and keep a `GOCACHE` apart from any stock Go. Neither the image
 nor the tarballs contain a QNX or BlackBerry 10 SDK, so for cgo mount
 your own SDK and set `CC` as described above.
@@ -237,7 +237,7 @@ in [misc/docker/README.md](misc/docker/README.md).
 
 #### Changes since go1.27.1
 
-A build from `release-branch.go1.27` reports `go version go1.27.2`, the
+A build from `release-branch.go1.27` reports `go version go1.27.4`, the
 same string as Google's release, so keep its `GOCACHE` apart from any stock
 Go, as described above. A build from `master` has no VERSION file and reports
 a devel version named by its commit, `go1.27-devel_<commit>`. If you build
