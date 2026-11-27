@@ -326,14 +326,28 @@ without these changes:
 - The heap is mapped lazily and committed span by span, so memory the heap
   has not used yet takes no RAM: a program keeping 1 MB live has 3.2 MB of
   data, not 5.7 MB. Committing a span of released memory makes one mmap call
-  instead of two, about 35 µs each, and an allocation-heavy program runs
-  15-25% faster.
+  instead of two, about 35 µs each, and commits up to seven more released
+  pages from the P's page cache in the same call, so a one-page span is one
+  64 KB commit; they stay free and visible to the scavenger. Together an
+  allocation-heavy program runs about 30% faster at the same peak memory
+  (1.06 to 0.74 s). Every page is still mapped eagerly, so running out of
+  memory is still reported, and still touched before use, for the QNX 6.5
+  deadlock above.
 - Goroutine stacks reserve 1024 bytes for signal frames instead of 2048:
   signal delivery used at most 528 bytes there. Goroutines that need up to
   about 2 KB of stack keep a 4 KB stack instead of growing to 8 KB; 2000 of
   them used 8.4 MB of stack instead of 16.4 MB.
-- Network I/O is bound by io-pkt: in a TCP benchmark 95% of the CPU samples
-  were in libc and the kernel, so these changes do not make it faster.
+- CPU profiles now attribute time spent in libc and the kernel to the Go
+  code that called it, instead of `runtime._ExternalCode`.
+- Network I/O is bound by io-pkt: in a TCP benchmark 78% of the CPU time is
+  the socket reads and writes themselves, 7% parking idle threads and 6.5%
+  arming the poller, so these changes do not make it faster.
+
+Measured on the same Q10 and left out: building with `-pgo` (2-5% slower on
+`encoding/json`), libc's memcpy and memset (slower than Go's at every size
+from 256 bytes to 8 MB), `mlock` to commit memory (25% faster but refused to
+non-root users), and a lighter barrier for release stores (one DMB per run
+queue put, about 1% of a goroutine switch).
 
 ### Contributing
 
