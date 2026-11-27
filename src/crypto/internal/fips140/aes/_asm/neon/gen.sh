@@ -3,9 +3,9 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-# gen.sh writes the NEON assembly for GOARCH=arm, aes_arm.s, from
-# OpenSSL's perlasm modules. Go's arm assembler has no NEON
-# instructions, so each module is assembled with clang and its
+# gen.sh writes the NEON assembly for GOARCH=arm, aes_arm.s and
+# gcm/gcm_arm.s, from OpenSSL's perlasm modules. Go's arm assembler has
+# no NEON instructions, so each module is assembled with clang and its
 # instructions are written out as WORDs, with the disassembly beside
 # them. Only OpenSSL's inner functions are used: they keep to R0-R6 and
 # R12 and use no stack, so they need nothing from the C calling
@@ -92,6 +92,38 @@ header() {
 // # details see http://www.openssl.org/~appro/cryptogams/.
 EOF
 }
+
+perl "$ossl/crypto/modes/asm/ghash-armv4.pl" void "$tmp/ghash.S"
+as "$tmp/ghash.S" "$tmp/ghash.o"
+
+{
+	header ../_asm/neon/gen.sh crypto/modes/asm/ghash-armv4.pl
+	cat <<EOF
+// # ====================================================================
+//
+// Go's assembler has no NEON instructions, so they are given as words.
+// The functions are gcm_init_neon and gcm_ghash_neon. They use R0-R3,
+// Q0-Q3, Q8-Q11 and Q13-Q15, and no stack.
+
+#include "textflag.h"
+
+// func gcmInitNEON(htable *[16]byte, h *[2]uint64)
+TEXT ·gcmInitNEON(SB),NOSPLIT|NOFRAME,\$0-8
+	MOVW htable+0(FP), R0
+	MOVW h+4(FP), R1
+$(words "$tmp/ghash.o" gcm_init_neon)
+	RET
+
+// func gcmGhashNEON(xi, htable *[16]byte, data []byte)
+TEXT ·gcmGhashNEON(SB),NOSPLIT|NOFRAME,\$0-20
+	MOVW xi+0(FP), R0
+	MOVW htable+4(FP), R1
+	MOVW data_base+8(FP), R2
+	MOVW data_len+12(FP), R3
+$(words "$tmp/ghash.o" gcm_ghash_neon)
+	RET
+EOF
+} >"$aes/gcm/gcm_arm.s"
 
 perl "$ossl/crypto/aes/asm/bsaes-armv7.pl" void "$tmp/bsaes.S"
 as "$tmp/bsaes.S" "$tmp/bsaes.o"
