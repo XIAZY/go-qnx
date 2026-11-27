@@ -6,6 +6,7 @@ package runtime
 
 import (
 	"internal/abi"
+	"internal/cpu"
 	"unsafe"
 )
 
@@ -70,6 +71,11 @@ func checkgoarm() {
 	flags := qnxCPUFlags()
 	qnxHasFPU = flags&_CPU_FLAG_FPU != 0
 	qnxVFPd32 = flags&(_ARM_CPU_FLAG_NEON|_ARM_CPU_FLAG_VFP_D32) != 0
+	if flags&_ARM_CPU_FLAG_NEON != 0 {
+		// QNX has no auxv, so tell internal/cpu about Neon with the
+		// HWCAP bit that Linux and FreeBSD use for it.
+		cpu.HWCap |= 1 << 12 // HWCAP_NEON
+	}
 	if flags&_CPU_FLAG_FPU == 0 && goarmsoftfp == 0 {
 		print("runtime: this CPU has no floating point hardware, so it cannot run\n")
 		print("a binary compiled for hard floating point. Recompile adding ,softfloat\n")
