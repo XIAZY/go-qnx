@@ -302,6 +302,52 @@ Tested:
   -short std` from prebuilt binaries: 377 packages; 3 timing tests fail under
   emulation's clock, the same with the process pinned to one CPU, and pass on
   real-time hardware.
+- BlackBerry 10 (qnx/arm), after the changes below: `runtime` (`-short`),
+  `time`, `os`, `net` and `syscall` on a BlackBerry Q10, each with the same
+  results as the tree without them.
+
+#### Performance on BlackBerry 10
+
+Measured on a BlackBerry Q10 (QNX 8.0.0, MSM8960) against the same tree
+without these changes:
+
+- nanotime and walltime read the kernel's clock from the system page instead
+  of calling clock_gettime, a kernel call: time.Now takes 326 ns, not 2115. A
+  read counts only when nsec equals nsec_stable, the copy the kernel keeps
+  for this, so a half-written value is never used whatever the tick length.
+  At start-up the runtime compares the page with clock_gettime and keeps
+  calling libc if they disagree or if the kernel does not keep nsec_stable.
+- save_g and load_g, which run on every goroutine switch and every libc call,
+  read the thread's control block through the cpupage, as libc's `__tls`
+  does, instead of calling it; each new thread first checks the two agree.
+  With the clock change, channel and scheduler benchmarks run 11-15% faster:
+  ChanSync 7.8 to 6.6 µs, PingPongHog 23.1 to 20.1 µs, CreateGoroutines 8.7 to
+  7.7 µs.
+- The heap is mapped lazily and committed span by span, so memory the heap
+  has not used yet takes no RAM: a program keeping 1 MB live has 3.2 MB of
+  data, not 5.7 MB. Committing a span of released memory makes one mmap call
+  instead of two, about 35 µs each, and commits up to seven more released
+  pages from the P's page cache in the same call, so a one-page span is one
+  64 KB commit; they stay free and visible to the scavenger. Together an
+  allocation-heavy program runs about 30% faster at the same peak memory
+  (1.06 to 0.74 s). Every page is still mapped eagerly, so running out of
+  memory is still reported, and still touched before use, for the QNX 6.5
+  deadlock above.
+- Goroutine stacks reserve 1024 bytes for signal frames instead of 2048:
+  signal delivery used at most 528 bytes there. Goroutines that need up to
+  about 2 KB of stack keep a 4 KB stack instead of growing to 8 KB; 2000 of
+  them used 8.4 MB of stack instead of 16.4 MB.
+- CPU profiles now attribute time spent in libc and the kernel to the Go
+  code that called it, instead of `runtime._ExternalCode`.
+- Network I/O is bound by io-pkt: in a TCP benchmark 78% of the CPU time is
+  the socket reads and writes themselves, 7% parking idle threads and 6.5%
+  arming the poller, so these changes do not make it faster.
+
+Measured on the same Q10 and left out: building with `-pgo` (2-5% slower on
+`encoding/json`), libc's memcpy and memset (slower than Go's at every size
+from 256 bytes to 8 MB), `mlock` to commit memory (25% faster but refused to
+non-root users), and a lighter barrier for release stores (one DMB per run
+queue put, about 1% of a goroutine switch).
 
 ### Contributing
 
