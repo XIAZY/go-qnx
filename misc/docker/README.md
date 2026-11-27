@@ -11,7 +11,7 @@ Docker, Inc.
 
 It is the official `golang` image's layout with this toolchain: Go in
 `/usr/local/go`, `GOPATH=/go`, `GOTOOLCHAIN=local`, on Debian bookworm, for
-`linux/amd64` and `linux/arm64`. Tags: `1.27.2` for the toolchain `go1.27.2`,
+`linux/amd64` and `linux/arm64`. Tags: `1.27.4` for the toolchain `go1.27.4`,
 `1.27` for the latest build of the 1.27 line, and `latest`.
 
 ```sh
@@ -19,11 +19,11 @@ docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27 \
 	sh -c 'CGO_ENABLED=0 GOOS=qnx GOARCH=arm GOARM=7 go build -o app-qnx-arm .'
 ```
 
-The release tarballs, `go1.27.2.linux-amd64.tar.gz`,
-`go1.27.2.linux-arm64.tar.gz` and `go1.27.2.src.tar.gz`, each with a
-`.sha256`, are attached to the `go1.27.2` release of this repository and
-install like an official Go release. This repository's `go1.27.2` tag is
-upstream's go1.27.2 plus the QNX port, so these files share Google's names but
+The release tarballs, `go1.27.4.linux-amd64.tar.gz`,
+`go1.27.4.linux-arm64.tar.gz` and `go1.27.4.src.tar.gz`, each with a
+`.sha256`, are attached to the `go1.27.4` release of this repository and
+install like an official Go release. This repository's `go1.27.4` tag is
+upstream's go1.27.4 plus the QNX port, so these files share Google's names but
 not their bytes; that is why the checksums are published beside them.
 
 Neither contains a QNX or BlackBerry 10 SDK. With `CGO_ENABLED=0` none is

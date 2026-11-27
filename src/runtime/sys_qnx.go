@@ -417,7 +417,8 @@ func fcntl(fd, cmd, arg int32) (ret int32, errno int32) {
 func fcntl_trampoline()
 
 // clockMonotonic returns clock_gettime(CLOCK_MONOTONIC). It is nanotime
-// on arm, and on 386 when the TSC cannot be used (see tsc_qnx_386.go).
+// on arm when the system page clock cannot be used (see os_qnx_arm.go),
+// and on 386 when the TSC cannot be used (see tsc_qnx_386.go).
 //
 //go:nosplit
 func clockMonotonic() int64 {
@@ -438,9 +439,14 @@ func clockMonotonic() int64 {
 func clock_gettime_trampoline()
 
 // syspagePtrName is static data: its users (qnxCyclesPerSec on 386,
-// qnxCPUFlags on arm) run from osinit or checkgoarm, before the heap
+// qnxSyspage on arm) run from osinit or checkgoarm, before the heap
 // exists.
 var syspagePtrName = []byte("_syspage_ptr\x00")
+
+// cpupagePtrName is static data for the same reason: qnxInitTSC looks up
+// _cpupage_ptr, the libc global that points at the kernel's cpupage entry
+// for the CPU, before the heap exists.
+var cpupagePtrName = []byte("_cpupage_ptr\x00")
 
 // dlsym looks up a symbol. The runtime uses it to find the libc global
 // _syspage_ptr, which points at the kernel's system page.
@@ -457,6 +463,16 @@ func dlsym_trampoline()
 
 //go:nosplit
 func walltime() (int64, int32) {
+	if sec, nsec, ok := qnxFastWalltime(); ok {
+		return sec, nsec
+	}
+	return libcWalltime()
+}
+
+// libcWalltime returns clock_gettime(CLOCK_REALTIME).
+//
+//go:nosplit
+func libcWalltime() (int64, int32) {
 	var ts timespec
 	args := struct {
 		clock_id int32

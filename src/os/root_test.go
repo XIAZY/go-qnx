@@ -2203,7 +2203,7 @@ func runRootMultiTest2(t *testing.T, f func(*testing.T, *rootMultiTest) (string,
 		if desc.ref.template != "BASE" {
 			return false
 		}
-		if desc.kind == testFileSymlink && desc.target.ref.template != "BASE" {
+		if desc.kind.isLink() && desc.target.ref.template != "BASE" {
 			return false
 		}
 		return true
@@ -2407,11 +2407,12 @@ func newRootTest(t *testing.T, source, target testFileDesc, inRoot bool) *rootMu
 type testFileKind int
 
 const (
-	testFileUnused  = testFileKind(iota)
-	testFileAbsent  // file does not exist
-	testFileFile    // regular file
-	testFileDir     // directory
-	testFileSymlink // symlink
+	testFileUnused   = testFileKind(iota)
+	testFileAbsent   // file does not exist
+	testFileFile     // regular file
+	testFileDir      // directory
+	testFileSymlink  // symlink
+	testFileJunction // Windows directory junction
 	testFileMax
 
 	// testFileError represents a path which fails during resolution,
@@ -2431,11 +2432,17 @@ func (kind testFileKind) String() string {
 		return "dir"
 	case testFileSymlink:
 		return "symlink"
+	case testFileJunction:
+		return "junction"
 	case testFileError:
 		return "error"
 	default:
 		return fmt.Sprintf("testFileKind(%d)", kind)
 	}
+}
+
+func (kind testFileKind) isLink() bool {
+	return kind == testFileSymlink || kind == testFileJunction
 }
 
 // testFileRef is a kind of reference to a file.
@@ -2504,11 +2511,13 @@ func (ref testFileRef) hasSlashSuffix() bool {
 type testFileDesc struct {
 	kind   testFileKind
 	ref    testFileRef
-	target *testFileDesc // symlink target, nil when kind is not testFileSymlink
+	target *testFileDesc // symlink or junction target, nil when !kind.isLink()
 }
 
 var rootComprehensive = flag.Bool("root_comprehensive", false,
 	"run many more os.Root test variations (slow, uncertain value)")
+
+var createJunction func(t *testing.T, link, target string)
 
 // allTestFileDescs returns an iterator over all the testFileDescs we use in tests.
 func allTestFileDescs() iter.Seq[testFileDesc] {
@@ -2518,7 +2527,7 @@ func allTestFileDescs() iter.Seq[testFileDesc] {
 	// When the kind is symlink, the desc contains a reference type and file kind for
 	// the link target as well. We only exercise one level of symlink (although we
 	// could do more), so this means a testFileDesc effectively contains four axes of
-	// variation: ref, kind, symlink ref, symlink kind.
+	// variation: ref, kind, link ref, link kind.
 	//
 	// For example:
 	//
@@ -2532,9 +2541,10 @@ func allTestFileDescs() iter.Seq[testFileDesc] {
 	// but this is quite a few tests and gets quite slow. So by default we exclude
 	// some variations. We test:
 	//
-	//   - every reference to every kind, except symlink
-	//   - direct and direct/ references to a symlink to every reference to a file
-	//   - a direct reference to a symlink to a direct reference to every kind (except file)
+	//   - direct and direct/ references to a symlink or junction
+	//     to every reference to a file
+	//   - a direct reference to a symlink or junction
+	//     to a direct reference to every kind (except file)
 	//
 	// The full set of variations may be enabled with the -comprehensive_root_tests flag.
 
@@ -2542,7 +2552,7 @@ func allTestFileDescs() iter.Seq[testFileDesc] {
 		// Every type of reference to every type of file, except symlink.
 		for _, ref := range testFileRefs {
 			for kind := range testFileMax {
-				if kind == testFileUnused || kind == testFileSymlink {
+				if kind == testFileUnused || kind.isLink() {
 					continue
 				}
 				desc := testFileDesc{
@@ -2560,27 +2570,32 @@ func allTestFileDescs() iter.Seq[testFileDesc] {
 		if !*rootComprehensive {
 			refs = testFileLimitedRefs
 		}
-		for _, ref := range refs {
-			for linkKind := range testFileMax {
-				if linkKind == testFileUnused || linkKind == testFileSymlink {
-					continue
-				}
-
-				linkRefs := testFileRefs
-				if !*rootComprehensive && linkKind != testFileFile && linkKind != testFileDir {
-					linkRefs = testFileLimitedRefs
-				}
-				for _, linkRef := range linkRefs {
-					desc := testFileDesc{
-						kind: testFileSymlink,
-						ref:  ref,
-						target: &testFileDesc{
-							kind: linkKind,
-							ref:  linkRef,
-						},
+		for _, kind := range []testFileKind{testFileSymlink, testFileJunction} {
+			if kind == testFileJunction && runtime.GOOS != "windows" {
+				continue
+			}
+			for _, ref := range refs {
+				for linkKind := range testFileMax {
+					if linkKind == testFileUnused || linkKind.isLink() {
+						continue
 					}
-					if !yield(desc) {
-						return
+
+					linkRefs := testFileRefs
+					if !*rootComprehensive && linkKind != testFileFile && linkKind != testFileDir {
+						linkRefs = testFileLimitedRefs
+					}
+					for _, linkRef := range linkRefs {
+						desc := testFileDesc{
+							kind: kind,
+							ref:  ref,
+							target: &testFileDesc{
+								kind: linkKind,
+								ref:  linkRef,
+							},
+						}
+						if !yield(desc) {
+							return
+						}
 					}
 				}
 			}
@@ -2601,7 +2616,7 @@ func allTestFileDescs() iter.Seq[testFileDesc] {
 // So, open "file1/", where file1 is a symlink to "DIR/../file2", where file2 is a directory.
 func (desc testFileDesc) String() string {
 	s := desc.ref.name + strings.ToUpper(desc.kind.String()[:1])
-	if desc.kind == testFileSymlink {
+	if desc.kind.isLink() {
 		s += desc.target.String()
 	}
 	return s
@@ -2616,6 +2631,9 @@ func (desc testFileDesc) escapes() bool {
 	if desc.kind == testFileSymlink {
 		return desc.target.escapes()
 	}
+	if desc.kind == testFileJunction {
+		return true
+	}
 	return false
 }
 
@@ -2629,7 +2647,7 @@ func (desc testFileDesc) lescapes() bool {
 		// On Windows, a trailing slash does not cause symlink resolution.
 		return false
 	}
-	if desc.ref.hasSlashSuffix() && desc.kind == testFileSymlink {
+	if desc.ref.hasSlashSuffix() && desc.kind.isLink() {
 		return desc.target.escapes()
 	}
 	return false
@@ -2637,7 +2655,7 @@ func (desc testFileDesc) lescapes() bool {
 
 // finalKind reports the kind of the file after following all symlinks.
 func (desc testFileDesc) finalKind() testFileKind {
-	if desc.kind == testFileSymlink {
+	if desc.kind.isLink() {
 		return desc.target.finalKind()
 	}
 	return desc.kind
@@ -2646,11 +2664,11 @@ func (desc testFileDesc) finalKind() testFileKind {
 func (desc testFileDesc) lfinalKind() testFileKind {
 	switch runtime.GOOS {
 	case "windows":
-		if desc.ref.hasSlashSuffix() && desc.kind == testFileSymlink && desc.target.kind != testFileDir {
+		if desc.ref.hasSlashSuffix() && desc.kind.isLink() && desc.target.kind != testFileDir {
 			return testFileError
 		}
 	default:
-		if desc.ref.hasSlashSuffix() && desc.kind == testFileSymlink {
+		if desc.ref.hasSlashSuffix() && desc.kind.isLink() {
 			return desc.target.finalKind()
 		}
 	}
@@ -2677,6 +2695,11 @@ func (desc testFileDesc) isError() bool {
 				return true
 			}
 			return isError(*desc.target, hasSuffix)
+		case testFileJunction:
+			if desc.target.kind == testFileFile || (hasSuffix && desc.target.kind != testFileDir) {
+				return true
+			}
+			return isError(*desc.target, hasSuffix)
 		default:
 			return hasSuffix
 		}
@@ -2685,11 +2708,16 @@ func (desc testFileDesc) isError() bool {
 }
 
 func (desc testFileDesc) isSymlinkToDir() bool {
-	if desc.kind != testFileSymlink {
+	if !desc.kind.isLink() {
 		return false
 	}
 	if desc.ref.escapes {
 		return false
+	}
+	if desc.kind == testFileJunction {
+		// Windows junctions are always directory links, regardless of what the
+		// target of the junction might be.
+		return true
 	}
 	if desc.finalKind() == testFileDir {
 		return true
@@ -2705,7 +2733,7 @@ func (desc testFileDesc) anySlashSuffix() bool {
 	if len(name) > 0 && os.IsPathSeparator(name[len(name)-1]) {
 		return true
 	}
-	if desc.kind == testFileSymlink {
+	if desc.kind.isLink() {
 		return desc.target.anySlashSuffix()
 	}
 	return false
@@ -2760,6 +2788,14 @@ func (desc testFileDesc) create(t *testing.T, dir, base, token string) (fi os.Fi
 		if err := os.Symlink(linktarget, path); err != nil {
 			t.Fatal(err)
 		}
+	case testFileJunction:
+		// Directory junction. We create a target named "s_"+base.
+		if runtime.GOOS != "windows" {
+			t.Skip("junctions not supported on " + runtime.GOOS)
+		}
+		linktarget := desc.target.ref.path(dir, "s_"+base)
+		fi = desc.target.create(t, dir, "s_"+base, token)
+		createJunction(t, path, linktarget)
 	default:
 		t.Fatalf("can't create file of kind: %v", desc.kind)
 	}
@@ -2820,7 +2856,7 @@ func dirTreeContents(t *testing.T, dir string) (contents []string) {
 		switch d.Type() {
 		case fs.ModeDir:
 			ent += "/"
-		case fs.ModeSymlink:
+		case fs.ModeSymlink, fs.ModeIrregular:
 			target, err := root.Readlink(path)
 			if err != nil {
 				t.Fatal(err)
@@ -2887,6 +2923,8 @@ func TestRootMultiOpen(t *testing.T) {
 		got := test.describeFile(t, f)
 
 		switch {
+		case test.target.isError():
+			test.wantError(t, gotErr, errAny)
 		case test.root != nil && test.target.escapes():
 			// The operation escapes the root.
 			test.wantError(t, gotErr, os.ErrPathEscapes)
@@ -3054,7 +3092,7 @@ func TestRootMultiLink(t *testing.T) {
 			test.wantError(t, gotErr, os.ErrPathEscapes)
 		case test.source.lfinalKind() == testFileAbsent:
 			test.wantError(t, gotErr, errAny)
-		case test.source.kind == testFileSymlink:
+		case test.source.kind.isLink():
 			// os.Link(old, new) may or may not deference old when it is a symlink.
 			// POSIX says that link(2) should deference the source, but implementations
 			// are inconsistent.
@@ -3103,6 +3141,11 @@ func TestRootMultiLstat(t *testing.T) {
 			if got, want := gotStat.Mode().Type(), fs.ModeSymlink; got != want {
 				test.errorf(t, "got mode %v, want %v", got, want)
 			}
+		case finalKind == testFileJunction:
+			test.wantError(t, gotErr, nil)
+			if got, want := gotStat.Mode().Type(), fs.ModeIrregular; got != want {
+				test.errorf(t, "got mode %v, want %v", got, want)
+			}
 		case gotErr != nil:
 		default:
 			if !os.SameFile(gotStat, test.targetInfo) {
@@ -3132,7 +3175,7 @@ func TestRootMultiMkdir(t *testing.T) {
 		case test.root != nil && test.target.ref.escapes:
 			// "mkdir ../target", or equivalent escaping path.
 			test.wantError(t, gotErr, os.ErrPathEscapes)
-		case test.target.slashSuffix() && test.target.kind == testFileSymlink:
+		case test.target.slashSuffix() && test.target.kind.isLink():
 			// "mkdir symlink/", inconsistent behavior across platforms
 			// as to whether this follows the symlink or not.
 			//
@@ -3197,7 +3240,7 @@ func testRootMultiMkdirAll(t *testing.T, test *rootMultiTest, targetPath string)
 		// "mkdir ../target", or equivalent escaping path.
 		test.wantError(t, gotErr, errAny)
 		return "", errSkipRootConsistencyCheck
-	case test.root != nil && test.target.kind == testFileSymlink && test.target.target.kind == testFileAbsent && targetPath != test.targetPath:
+	case test.root != nil && test.target.kind.isLink() && test.target.target.kind == testFileAbsent && targetPath != test.targetPath:
 		// A minor inconsistency between Root.MkdirAll and os.MkdirAll:
 		// When an intermediate component of the tree being constructed is a
 		// dangling symlink, Root.MkdirAll will follow the symlink and create
@@ -3231,7 +3274,7 @@ func TestRootMultiRename(t *testing.T) {
 		gotErr := rename(test.sourcePath, test.targetPath)
 
 		if runtime.GOOS == "windows" &&
-			(test.source.finalKind() != test.target.finalKind() || test.source.kind == testFileSymlink || test.target.kind == testFileSymlink) {
+			(test.source.finalKind() != test.target.finalKind() || test.source.kind.isLink() || test.target.kind.isLink()) {
 			// os.Rename on Windows is implemented using MoveFileEx,
 			// while Root.Rename is implemented using NtSetInformationFileEx
 			// with an explicit request for POSIX semantics.
@@ -3296,6 +3339,8 @@ func TestRootMultiReadFile(t *testing.T) {
 		}
 
 		switch {
+		case test.target.isError():
+			test.wantError(t, gotErr, errAny)
 		case test.root != nil && test.target.escapes():
 			test.wantError(t, gotErr, os.ErrPathEscapes)
 		case test.target.finalKind() == testFileAbsent:
@@ -3459,7 +3504,7 @@ func TestRootMultiReadlink(t *testing.T) {
 		switch {
 		case test.root != nil && test.target.lescapes():
 			test.wantError(t, gotErr, os.ErrPathEscapes)
-		case test.target.kind != testFileSymlink:
+		case !test.target.kind.isLink():
 			test.wantError(t, gotErr, errAny)
 		case test.target.anySlashSuffix():
 		default:
@@ -3512,6 +3557,8 @@ func TestRootMultiOpenFile(t *testing.T) {
 		got := test.describeFile(t, f)
 
 		switch {
+		case test.target.isError():
+			test.wantError(t, gotErr, errAny)
 		case test.root != nil && test.target.escapes():
 			test.wantError(t, gotErr, os.ErrPathEscapes)
 		case test.target.finalKind() == testFileAbsent:

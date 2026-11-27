@@ -179,7 +179,7 @@ jobs:
             gh release create "$TAG" -R '${{ github.repository }}' \
               --verify-tag \
               --title "$TAG" \
-              --notes "Go with the QNX ports, built from tag $TAG with make.bash -distpack. Install like an official Go release. With CGO_ENABLED=0, GOOS=qnx GOARCH=386 or GOARCH=arm cross-compiles without a QNX SDK. Image: ghcr.io/xiazy/go-qnx:${TAG#go}. This repository's $TAG is upstream's $TAG plus the QNX port: the files share Google's names, not their bytes; check them against the .sha256 files." \
+              --notes "Go with the QNX ports, built from tag $TAG with make.bash -distpack. Install like an official Go release. With CGO_ENABLED=0, GOOS=qnx GOARCH=386 or GOARCH=arm cross-compiles without a QNX SDK. Image: ${IMAGE,,}:${TAG#go}. This repository's $TAG is upstream's $TAG plus the QNX port: the files share Google's names, not their bytes; check them against the .sha256 files." \
               *
             exit 0
           fi
@@ -254,6 +254,9 @@ jobs:
         with:
           context: misc/docker/${{ env.MAJOR }}/bookworm
           platforms: ${{ matrix.platform }}
+          # the release job filled this repository's release, which on a fork
+          # is not the one the committed Dockerfile defaults to
+          build-args: GO_DOWNLOAD_BASE=https://github.com/${{ github.repository }}/releases/download/${{ needs.dist.outputs.tag }}
           provenance: mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}

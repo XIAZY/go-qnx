@@ -71,5 +71,16 @@ func (c *sigctxt) set_sigaddr(x uint32) { c.info.si_addr = uintptr(x) }
 //go:nosplit
 //go:nowritebarrierrec
 func sigDelayedFault(sig uint32, c *sigctxt, gp *g) bool {
+	// The kernel builds the signal frame on the interrupted stack, and
+	// stackSystem (stack.go) reserves room for one. A frame that reaches
+	// below a goroutine's stack has written over the memory there, so
+	// stop rather than run on. The context is inside that frame.
+	if gp != nil {
+		sp := uintptr(c.sp())
+		if sp >= gp.stack.lo && sp < gp.stack.hi && uintptr(c.ctxt) < gp.stack.lo {
+			writeErrStr("fatal error: signal frame below the goroutine stack (see stackSystem)\n")
+			exit(2)
+		}
+	}
 	return false
 }

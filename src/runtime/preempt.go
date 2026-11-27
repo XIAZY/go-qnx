@@ -362,6 +362,12 @@ func init() {
 		print("runtime: asyncPreemptStack=", asyncPreemptStack, "\n")
 		throw("async stack too large")
 	}
+	if GOOS == "qnx" && GOARCH == "arm" && stackSystem < asyncPreemptStack+qnxArmSigFrame {
+		// A signal taken inside an injected asyncPreempt builds its
+		// frame below asyncPreempt's, within stackSystem (stack.go).
+		print("runtime: asyncPreemptStack=", asyncPreemptStack, " stackSystem=", stackSystem, "\n")
+		throw("stackSystem too small for a signal frame below asyncPreempt")
+	}
 }
 
 // wantAsyncPreempt returns whether an asynchronous preemption is

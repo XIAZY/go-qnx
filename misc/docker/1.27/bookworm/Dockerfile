@@ -11,12 +11,12 @@ FROM buildpack-deps:bookworm-scm AS build
 
 ENV PATH /usr/local/go/bin:$PATH
 
-ENV GOLANG_VERSION 1.27.2
+ENV GOLANG_VERSION 1.27.4
 
 # The release assets are downloaded from GitHub; CI builds a pull request's
 # image from its own freshly built tarballs by pointing this at a local server.
 # The checksums below are checked either way.
-ARG GO_DOWNLOAD_BASE=https://github.com/XIAZY/go-qnx/releases/download/go1.27.2
+ARG GO_DOWNLOAD_BASE=https://github.com/XIAZY/go-qnx/releases/download/go1.27.4
 
 RUN set -eux; \
 	now="$(date '+%s')"; \
@@ -24,12 +24,12 @@ RUN set -eux; \
 	url=; \
 	case "$arch" in \
 		'amd64') \
-			url="$GO_DOWNLOAD_BASE/go1.27.2.linux-amd64.tar.gz"; \
-			sha256='732674419dd012d65c2c94816b4ffa133caafec6a5bc1850cb85677a5fab7c7e'; \
+			url="$GO_DOWNLOAD_BASE/go1.27.4.linux-amd64.tar.gz"; \
+			sha256='f9fc6cb67047ac0e0fc957b6243941909e866d78c517fad8ca4d2881bb200e03'; \
 			;; \
 		'arm64') \
-			url="$GO_DOWNLOAD_BASE/go1.27.2.linux-arm64.tar.gz"; \
-			sha256='ddec8d5b37eb84bae566f5a096fb3acd7ecd727362b1fe501001304c2fd154ed'; \
+			url="$GO_DOWNLOAD_BASE/go1.27.4.linux-arm64.tar.gz"; \
+			sha256='1ac6b6531854563017d5462c6c884baa621e70bf607376846fba296e3e9153b8'; \
 			;; \
 		*) echo >&2 "error: unsupported architecture '$arch' (likely packaging update needed)"; exit 1 ;; \
 	esac; \
@@ -58,7 +58,7 @@ RUN set -eux; \
 # smoke test: the toolchain must report this version and know both QNX
 # targets (dist lists them only with -broken; CI's hello cross-build is the real test)
 	go version; \
-	[ "$(go env GOVERSION)" = 'go1.27.2' ]; \
+	[ "$(go env GOVERSION)" = 'go1.27.4' ]; \
 	go tool dist list -broken | grep -qx 'qnx/386'; \
 	go tool dist list -broken | grep -qx 'qnx/arm'; \
 # make sure our reproducibile timestamp is probably still correct (best-effort inline reproducibility test)
@@ -87,7 +87,7 @@ RUN set -eux; \
 	fi; \
 	rm -rf /var/lib/apt/lists/*
 
-ENV GOLANG_VERSION 1.27.2
+ENV GOLANG_VERSION 1.27.4
 
 # don't auto-upgrade the gotoolchain
 # https://github.com/docker-library/golang/issues/472
