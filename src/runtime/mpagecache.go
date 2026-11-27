@@ -66,6 +66,35 @@ func (c *pageCache) allocN(npages uintptr) (uintptr, uintptr) {
 	return c.base + uintptr(i*pageSize), uintptr(scav) * pageSize
 }
 
+// qnxCommitAhead is how many free, released pages after a released span
+// allocSpan commits along with it on qnx/arm, from the P's page cache.
+// Committing memory there is an eager mmap, which costs about 35 us on a
+// BlackBerry Q10 whatever its size, plus a touch of every page that the
+// runtime must make anyway (see qnxSysUsed); for a one-page span the
+// mmap was most of the cost. The pages stay free in the cache, now
+// unscavenged, and go back to the page allocator unscavenged when the
+// cache is flushed, where the scavenger can release them again.
+//
+// ponytail: 7 makes a one-page span a 64 KB commit; a larger value
+// commits more memory ahead of use per P for fewer mmap calls.
+const qnxCommitAhead = 7
+
+// takeScavengedAfter clears the scavenged bits of the up to n pages
+// that directly follow addr in the cache and are free and scavenged,
+// and returns their size in bytes. The pages stay free in the cache.
+func (c *pageCache) takeScavengedAfter(addr, n uintptr) uintptr {
+	if addr < c.base || addr >= c.base+pageCachePages*pageSize {
+		return 0
+	}
+	i := (addr - c.base) / pageSize
+	k := uintptr(0)
+	for k < n && i+k < pageCachePages && (c.cache&c.scav)>>(i+k)&1 != 0 {
+		k++
+	}
+	c.scav &^= (uint64(1)<<k - 1) << i
+	return k * pageSize
+}
+
 // flush empties out unallocated free pages in the given cache
 // into s. Then, it clears the cache, such that empty returns
 // true.
