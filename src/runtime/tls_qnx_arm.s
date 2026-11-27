@@ -15,14 +15,39 @@
 // the control block; it is pure and returns the same pointer whichever
 // CPU runs the thread, so the signal trampoline can call it to recover g
 // after libc has clobbered R10.
+//
+// save_g runs on every setg (asm_arm.s defines SAVE_G_ALWAYS), that is on
+// every goroutine switch, mcall, systemstack and asmcgocall, so calling
+// __tls through the PLT each time is a cost. Once osinit has checked
+// (qnxInitTSC, os_qnx_arm.go) that libc's __tls is what the disassembly of
+// BlackBerry 10's libc.so.3 shows, qnxCpupagePtr holds the address of
+// libc's _cpupage_ptr variable, and both functions read the control block
+// as __tls does: *(*_cpupage_ptr) is the kernel's cpupage_entry, whose
+// first field, tls, is the control block of the thread running on this CPU.
+// The kernel updates it on every thread switch, so a migration between the
+// two loads is harmless. mstart_stub (sys_qnx_arm.s) repeats the check on
+// every new thread, against __tls, before the thread's first save_g, and
+// clears qnxCpupagePtr on a mismatch. Before osinit, and once a check has
+// failed, qnxCpupagePtr is 0 and the functions call __tls as before.
 
 // save_g stores g into the thread control block, so that load_g can
 // recover it after externally compiled (libc) code overwrites R10.
+// The callers (runtime.gogo, runtime.mcall) require that save_g leave
+// every register but R0 and R11 unchanged; the fast path touches only
+// those (R11 is the assembler's temporary for the global's address).
 // __tls() follows the C ABI and so preserves R4-R11, g (R10) among them;
-// it may clobber R0-R3 and R12. The callers (runtime.gogo, runtime.mcall)
-// require that save_g leave every register but R0 and R11 unchanged, so
-// R1-R3 and R12 are saved around the call. Returns with g in R0.
+// it may clobber R0-R3 and R12, so the slow path saves R1-R3 and R12
+// around the call. Returns with g in R0.
 TEXT runtime·save_g(SB),NOSPLIT|NOFRAME,$0
+	MOVW	runtime·qnxCpupagePtr(SB), R0
+	CMP	$0, R0
+	B.EQ	slow
+	MOVW	(R0), R0		// R0 = _cpupage_ptr
+	MOVW	(R0), R0		// R0 = cpupage_entry.tls, the control block
+	MOVW	g, (0x24)(R0)		// control block __reserved1 = g
+	MOVW	g, R0			// return g in R0
+	RET
+slow:
 	MOVM.DB.W	[R1-R3, R11, R12, R14], (R13)
 	MOVW	R13, R11		// keep SP; goroutine stacks are only 4-aligned
 	BIC	$0x7, R13		// the C ABI needs 8-byte alignment at the call
@@ -35,8 +60,19 @@ TEXT runtime·save_g(SB),NOSPLIT|NOFRAME,$0
 
 // load_g loads g from the thread control block, for use in the signal
 // trampoline and after calls into libc that overwrote R10. It clobbers
-// R0 and g, as its callers expect, and preserves the rest.
+// R0, R11 and g, as its callers expect (they save R11 or run where it is
+// free: sigtramp, cgocallback, _cgo_topofstack, runtime/cgo's crosscall2),
+// and on the slow path preserves the rest; the fast path touches nothing
+// else either.
 TEXT runtime·load_g(SB),NOSPLIT|NOFRAME,$0
+	MOVW	runtime·qnxCpupagePtr(SB), R0
+	CMP	$0, R0
+	B.EQ	slow
+	MOVW	(R0), R0		// R0 = _cpupage_ptr
+	MOVW	(R0), R0		// R0 = cpupage_entry.tls, the control block
+	MOVW	(0x24)(R0), g		// g = control block __reserved1
+	RET
+slow:
 	MOVM.DB.W	[R1-R3, R11, R12, R14], (R13)
 	MOVW	R13, R11		// keep SP; the interrupted stack may be 4-aligned
 	BIC	$0x7, R13		// the C ABI needs 8-byte alignment at the call

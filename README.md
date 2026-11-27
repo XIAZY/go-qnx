@@ -206,28 +206,28 @@ and only the rules above apply.
 The container image `ghcr.io/xiazy/go-qnx` holds this toolchain. It is
 public, for linux/amd64 and linux/arm64, and has the same layout as the
 official golang image: Go in `/usr/local/go`, `GOPATH=/go`,
-`GOTOOLCHAIN=local`. The tag `1.27.2` never changes, `1.27` follows the
+`GOTOOLCHAIN=local`. The tag `1.27.4` never changes, `1.27` follows the
 1.27 point releases, and `latest` is the newest release. To build in the
 current directory:
 
-	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.2 \
+	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.4 \
 		sh -c 'CGO_ENABLED=0 GOOS=qnx GOARCH=arm GOARM=7 go build -o app .'   # BlackBerry 10, ARM
-	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.2 \
+	docker run --rm -v "$PWD:/src" -w /src ghcr.io/xiazy/go-qnx:1.27.4 \
 		sh -c 'CGO_ENABLED=0 GOOS=qnx GOARCH=386 go build -o app .'           # QNX 6.5, x86
 
 The same toolchain is on the
-[go1.27.2 release](https://github.com/XIAZY/go-qnx/releases/tag/go1.27.2)
-as `go1.27.2.linux-amd64.tar.gz` and `go1.27.2.linux-arm64.tar.gz`, with
-`go1.27.2.src.tar.gz`, each with a `.sha256` file beside it. Install one
+[go1.27.4 release](https://github.com/XIAZY/go-qnx/releases/tag/go1.27.4)
+as `go1.27.4.linux-amd64.tar.gz` and `go1.27.4.linux-arm64.tar.gz`, with
+`go1.27.4.src.tar.gz`, each with a `.sha256` file beside it. Install one
 like an official Go release:
 
-	curl -fLO https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.linux-amd64.tar.gz
-	echo "$(curl -fsL https://github.com/XIAZY/go-qnx/releases/download/go1.27.2/go1.27.2.linux-amd64.tar.gz.sha256)  go1.27.2.linux-amd64.tar.gz" | sha256sum -c
-	tar -C /usr/local -xzf go1.27.2.linux-amd64.tar.gz
+	curl -fLO https://github.com/XIAZY/go-qnx/releases/download/go1.27.4/go1.27.4.linux-amd64.tar.gz
+	echo "$(curl -fsL https://github.com/XIAZY/go-qnx/releases/download/go1.27.4/go1.27.4.linux-amd64.tar.gz.sha256)  go1.27.4.linux-amd64.tar.gz" | sha256sum -c
+	tar -C /usr/local -xzf go1.27.4.linux-amd64.tar.gz
 
-These files have the names of Google's go1.27.2 release but not its
-bytes: this repository's go1.27.2 is upstream go1.27.2 plus the QNX port,
-and `go version` prints go1.27.2 for both. Pin them by checksum, not by
+These files have the names of Google's go1.27.4 release but not its
+bytes: this repository's go1.27.4 is upstream go1.27.4 plus the QNX port,
+and `go version` prints go1.27.4 for both. Pin them by checksum, not by
 version, and keep a `GOCACHE` apart from any stock Go. Neither the image
 nor the tarballs contain a QNX or BlackBerry 10 SDK, so for cgo mount
 your own SDK and set `CC` as described above.
@@ -237,7 +237,7 @@ in [misc/docker/README.md](misc/docker/README.md).
 
 #### Changes since go1.27.1
 
-A build from `release-branch.go1.27` reports `go version go1.27.2`, the
+A build from `release-branch.go1.27` reports `go version go1.27.4`, the
 same string as Google's release, so keep its `GOCACHE` apart from any stock
 Go, as described above. A build from `master` has no VERSION file and reports
 a devel version named by its commit, `go1.27-devel_<commit>`. If you build
@@ -250,6 +250,8 @@ New:
 - The ARM port, `GOOS=qnx GOARCH=arm` (GOARM=7), for QNX Neutrino 6.5-era
   systems including BlackBerry 10.
 - cgo for qnx/arm, and the `misc/go_qnx_exec` on-device test runner (both above).
+- AES-GCM and AES-CTR on NEON for `GOARCH=arm`, on any system (see
+  [Performance on BlackBerry 10](#performance-on-blackberry-10)).
 
 Fixed, on both architectures unless noted:
 
@@ -302,6 +304,73 @@ Tested:
   -short std` from prebuilt binaries: 377 packages; 3 timing tests fail under
   emulation's clock, the same with the process pinned to one CPU, and pass on
   real-time hardware.
+- BlackBerry 10 (qnx/arm), after the changes below: `runtime` (`-short`),
+  `time`, `os`, `net` and `syscall` on a BlackBerry Q10, each with the same
+  results as the tree without them.
+- BlackBerry 10 (qnx/arm), with the NEON AES-GCM below, on a BlackBerry Q10:
+  `crypto/cipher`, `crypto/aes`, `crypto/rand`, `crypto/hpke`,
+  `crypto/internal/fips140/aes`, `crypto/internal/fips140test` and `crypto/tls`
+  (`-short`), with no failures, the AES-GCM and CTR tests passing for both the
+  NEON and the generic code. The AES-GCM and CTR tests of `crypto/cipher` also
+  pass for linux/arm, run under emulation.
+
+#### Performance on BlackBerry 10
+
+Measured on a BlackBerry Q10 (QNX 8.0.0, MSM8960) against the same tree
+without these changes:
+
+- nanotime and walltime read the kernel's clock from the system page instead
+  of calling clock_gettime, a kernel call: time.Now takes 326 ns, not 2115. A
+  read counts only when nsec equals nsec_stable, the copy the kernel keeps
+  for this, so a half-written value is never used whatever the tick length.
+  At start-up the runtime compares the page with clock_gettime and keeps
+  calling libc if they disagree or if the kernel does not keep nsec_stable.
+- save_g and load_g, which run on every goroutine switch and every libc call,
+  read the thread's control block through the cpupage, as libc's `__tls`
+  does, instead of calling it; each new thread first checks the two agree.
+  With the clock change, channel and scheduler benchmarks run 11-15% faster:
+  ChanSync 7.8 to 6.6 µs, PingPongHog 23.1 to 20.1 µs, CreateGoroutines 8.7 to
+  7.7 µs.
+- The heap is mapped lazily and committed span by span, so memory the heap
+  has not used yet takes no RAM: a program keeping 1 MB live has 3.2 MB of
+  data, not 5.7 MB. Committing a span of released memory makes one mmap call
+  instead of two, about 35 µs each, and commits up to seven more released
+  pages from the P's page cache in the same call, so a one-page span is one
+  64 KB commit; they stay free and visible to the scavenger. Together an
+  allocation-heavy program runs about 30% faster at the same peak memory
+  (1.06 to 0.74 s). Every page is still mapped eagerly, so running out of
+  memory is still reported, and still touched before use, for the QNX 6.5
+  deadlock above.
+- Goroutine stacks reserve 1024 bytes for signal frames instead of 2048:
+  signal delivery used at most 528 bytes there. Goroutines that need up to
+  about 2 KB of stack keep a 4 KB stack instead of growing to 8 KB; 2000 of
+  them used 8.4 MB of stack instead of 16.4 MB.
+- CPU profiles now attribute time spent in libc and the kernel to the Go
+  code that called it, instead of `runtime._ExternalCode`.
+- AES-GCM and AES-CTR use NEON where the CPU has it: a bit-sliced AES that
+  encrypts eight blocks at a time, and a GHASH built on NEON's polynomial
+  multiply, both from OpenSSL's CRYPTOGAMS modules (`bsaes-armv7.pl` and
+  `ghash-armv4.pl`). Sealing 8 KB with AES-128-GCM takes 161 µs, not 1890
+  (51 MB/s, not 4.3); a 1350-byte TLS record 29 µs, not 303; 64 bytes 4.3 µs,
+  not 25. AES-256-GCM seals 8 KB in 198 µs, not 1904, and AES-128-CTR encrypts
+  it in 137 µs, not 410. Most of the time used to go to the hash. On the same
+  phone ChaCha20-Poly1305, still in generic code, seals 8 KB in 311 µs, so
+  crypto/tls now offers AES-GCM first on a CPU with NEON. With NEON, AES-GCM
+  no longer goes through Go's table-based AES, which is not constant-time;
+  single blocks, and so CBC and the odd blocks of CTR, still do. An AES key
+  takes 1.7 KB more memory. None of this is specific to QNX: it is on for
+  `GOARCH=arm` wherever the system reports NEON, and `GODEBUG=cpu.neon=off`
+  turns it off. The assembly is generated by
+  `src/crypto/internal/fips140/aes/_asm/neon/gen.sh`.
+- Network I/O is bound by io-pkt: in a TCP benchmark 78% of the CPU time is
+  the socket reads and writes themselves, 7% parking idle threads and 6.5%
+  arming the poller, so these changes do not make it faster.
+
+Measured on the same Q10 and left out: building with `-pgo` (2-5% slower on
+`encoding/json`), libc's memcpy and memset (slower than Go's at every size
+from 256 bytes to 8 MB), `mlock` to commit memory (25% faster but refused to
+non-root users), and a lighter barrier for release stores (one DMB per run
+queue put, about 1% of a goroutine switch).
 
 ### Contributing
 

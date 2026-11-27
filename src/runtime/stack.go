@@ -76,8 +76,25 @@ const (
 	// (about 0x2b8 bytes each) and two entries into libc's
 	// __signalstub before sigtramp moves to the signal stack: an
 	// asynchronous signal, and the fault it delayed (see
-	// sigDelayedFault in os_qnx.go).
-	stackSystem = goos.IsWindows*4096 + goos.IsPlan9*512 + goos.IsIos*goarch.IsArm64*1024 + goos.IsQnx*2048
+	// sigDelayedFault in os_qnx.go). That nesting is the QNX 6.5 x86
+	// kernel's; on qnx/arm (BlackBerry 10) a goroutine stack holds one
+	// frame, and signal delivery reached at most 528 bytes below the
+	// interrupted SP, kernel frame, __signalstub and sigtramp together,
+	// over about 1600 preemption and profiling signals on a BlackBerry
+	// Q10 (qnxArmSigFrame). An injected asyncPreempt can sit inside the
+	// reserve when the next signal comes, so the frame must fit below it:
+	// preempt.go checks that at start-up. Every byte not reserved here
+	// is room Go code gets before a stack must grow. A QNX 6.5 ARM board
+	// that nests a delayed fault inside a signal frame, as the x86
+	// kernel does, would overflow 1024; qnx/arm does not handle that
+	// nesting in any case (see sigDelayedFault in signal_qnx_arm.go), and
+	// the signal handler stops the program if a frame lands below the
+	// goroutine's stack.
+	stackSystem = goos.IsWindows*4096 + goos.IsPlan9*512 + goos.IsIos*goarch.IsArm64*1024 + goos.IsQnx*(2048-goarch.IsArm*1024)
+
+	// qnxArmSigFrame is the most stack that signal delivery was measured
+	// to use below the interrupted SP on qnx/arm (see stackSystem).
+	qnxArmSigFrame = 528
 
 	// The minimum size of stack used by Go code
 	stackMin = 2048

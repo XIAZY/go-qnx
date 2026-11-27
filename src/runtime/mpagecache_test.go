@@ -423,3 +423,31 @@ func TestPageAllocAllocToCache(t *testing.T) {
 		})
 	}
 }
+
+func TestPageCacheTakeScavengedAfter(t *testing.T) {
+	base := uintptr(0x10000000)
+	page := uintptr(PageSize)
+	for _, tc := range []struct {
+		name        string
+		cache, scav uint64
+		addr, n     uintptr
+		want        uintptr // pages taken
+		wantScav    uint64
+	}{
+		{"run of four", ^uint64(0), 0xF0, base + 4*page, 7, 4, 0},
+		{"stops at unscavenged", ^uint64(0), 0b101100, base + 2*page, 7, 2, 0b100000},
+		{"stops at n", ^uint64(0), 0xFF, base, 3, 3, 0xF8},
+		{"page in use", ^uint64(0) &^ (1 << 4), 0xF0, base + 4*page, 7, 0, 0xF0},
+		{"last page", ^uint64(0), 1 << 63, base + 63*page, 7, 1, 0},
+		{"past the cache", ^uint64(0), ^uint64(0), base + 64*page, 7, 0, ^uint64(0)},
+		{"before the cache", ^uint64(0), ^uint64(0), base - page, 7, 0, ^uint64(0)},
+	} {
+		c := NewPageCache(base, tc.cache, tc.scav)
+		if got := c.TakeScavengedAfter(tc.addr, tc.n); got != tc.want*page {
+			t.Errorf("%s: took %d bytes, want %d", tc.name, got, tc.want*page)
+		}
+		if c.Scav() != tc.wantScav || c.Cache() != tc.cache {
+			t.Errorf("%s: scav %#x cache %#x, want scav %#x cache %#x", tc.name, c.Scav(), c.Cache(), tc.wantScav, tc.cache)
+		}
+	}
+}
