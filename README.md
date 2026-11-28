@@ -250,8 +250,8 @@ New:
 - The ARM port, `GOOS=qnx GOARCH=arm` (GOARM=7), for QNX Neutrino 6.5-era
   systems including BlackBerry 10.
 - cgo for qnx/arm, and the `misc/go_qnx_exec` on-device test runner (both above).
-- AES-GCM, AES-CTR, AES-CBC decryption and ChaCha20-Poly1305 on NEON for
-  `GOARCH=arm`, on any system (see
+- AES-GCM, AES-CTR, AES-CBC decryption, ChaCha20-Poly1305, SHA-256 and
+  SHA-512 on NEON for `GOARCH=arm`, on any system (see
   [Performance on BlackBerry 10](#performance-on-blackberry-10)).
 
 Fixed, on both architectures unless noted:
@@ -319,6 +319,13 @@ Tested:
   code, and `crypto/cipher`, `crypto/internal/fips140/aes`, `crypto/hpke` and
   `crypto/tls` (`-short`), with no failures, with NEON and with
   `GODEBUG=cpu.neon=off`. The same pass for linux/arm under emulation.
+- BlackBerry 10 (qnx/arm), with the SHA-256 and SHA-512 assembly below, on a
+  BlackBerry Q10: `crypto/sha256`, `crypto/sha512`, `crypto/hmac`,
+  `crypto/ed25519` and `crypto/tls` (`-short`), with no failures, with NEON
+  and with `GODEBUG=cpu.neon=off`. `crypto/x509` fails TestEnvVars there, with
+  and without these changes. For linux/arm under emulation those and
+  `crypto/x509`, `crypto/ecdsa`, `crypto/rsa` and `crypto/internal/fips140test`
+  pass.
 
 #### Performance on BlackBerry 10
 
@@ -384,6 +391,15 @@ without these changes:
   AES-128, not 429, and 153 µs with AES-256, not 540; 1 KB takes 15 µs, not
   54. Encryption cannot go eight at a time, each block needing the one before
   it, and still takes 433 µs for 8 KB.
+- SHA-256 and SHA-512 had no assembly for arm. SHA-256 of 8 KB takes 92 µs,
+  not 246 (89 MB/s, not 33), of 1 KB 12.6 µs, not 33, and HMAC-SHA256 of 1 KB
+  17 µs, not 35. Its rounds are in the integer registers, in Go assembly, and
+  the message schedule is in NEON; without NEON the schedule is in integer
+  registers too and 8 KB takes 126 µs, on any ARM processor. SHA-512 of 8 KB
+  takes 124 µs, not 474 (66 MB/s, not 17), with the NEON code of OpenSSL's
+  `sha512-armv4.pl`; without NEON it is the generic code as before. Ed25519
+  takes what it did, 0.9 ms to sign and 2.3 ms to verify: its time is in the
+  curve.
 - On ARMv7 the compiler clears and copies arrays of bytes, and anything else
   not aligned to a word, four bytes at a time; it used to go one byte at a
   time, since older ARM processors cannot read a word at any address. Clearing
