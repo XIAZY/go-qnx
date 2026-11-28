@@ -3,13 +3,13 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-# gen.sh writes the NEON assembly for GOARCH=arm, aes_arm.s and
-# gcm/gcm_arm.s, from OpenSSL's perlasm modules. Go's arm assembler has
-# no NEON instructions, so each module is assembled with clang and its
-# instructions are written out as WORDs, with the disassembly beside
-# them. Only OpenSSL's inner functions are used: they keep to R0-R6 and
-# R12 and use no stack, so they need nothing from the C calling
-# convention. What surrounds them is written here, for Go's.
+# gen.sh writes the NEON assembly for GOARCH=arm, aes_arm.s, gcm/gcm_arm.s
+# and ../sha512/sha512block_arm.s, from OpenSSL's perlasm modules. Go's
+# arm assembler has no NEON instructions, so each module is assembled with
+# clang and its instructions are written out as WORDs, with the
+# disassembly beside them. Only OpenSSL's inner functions are used: they
+# keep to R0-R6 and R12 and use no stack, so they need nothing from the C
+# calling convention. What surrounds them is written here, for Go's.
 #
 # It also writes vendor/golang.org/x/crypto/chacha20/chacha_arm.s, which
 # is not from OpenSSL: its NEON ChaCha20 runs a fourth block in the
@@ -509,3 +509,65 @@ TEXT ·updatePairsNEON(SB),NOSPLIT|NOFRAME,\$0-16
 $(words "$tmp/poly.o" poly)
 	RET
 EOF
+
+perl "$ossl/crypto/sha/asm/sha512-armv4.pl" void "$tmp/sha512.S"
+as "$tmp/sha512.S" "$tmp/sha512.o"
+
+# k512 prints OpenSSL's K512 table as DATA lines, low word first.
+k512() {
+	awk '
+		/^K512:/ { on = 1; next }
+		!on { next }
+		/^WORD64\(/ {
+			gsub(/WORD64\(|\)|,/, " ")
+			for (i = 1; i <= 3; i += 2) {
+				printf "DATA k512<>+%d(SB)/4, $0x%s\n", off, substr($(i+1), 3, 8)
+				printf "DATA k512<>+%d(SB)/4, $0x%s\n", off + 4, substr($i, 3, 8)
+				off += 8
+			}
+			next
+		}
+		on && off { exit }' "$1"
+}
+
+{
+	header ../aes/_asm/neon/gen.sh crypto/sha/asm/sha512-armv4.pl
+	cat <<EOF
+// # Permission to use under GPL terms is granted.
+// # ====================================================================
+//
+// Go's assembler has no NEON instructions, so they are given as words.
+// Of the module, only sha512_block_data_order_neon is here, from where it
+// loads the context. It uses R0-R3, R12 and D0-D31, and no stack. It finds
+// K512 from its own address; here R3 is set by the caller. Its vpush and
+// vpop of D8-D15 are left out, as Go has no registers to save.
+
+#include "textflag.h"
+
+$(k512 "$tmp/sha512.S")
+GLOBL k512<>(SB), RODATA|NOPTR, \$640
+
+// func blockNEON(dig *Digest, p []byte)
+//
+// The words are in a function of their own: a constant here would make
+// the assembler put a pool among them, which the branches would not skip.
+TEXT ·blockNEON(SB),NOSPLIT,\$0-16
+	MOVW dig+0(FP), R0
+	MOVW p_base+4(FP), R1
+	MOVW p_len+8(FP), R2
+	BIC \$127, R2
+	ADD R1, R2 // the end of the whole blocks
+	CMP R1, R2
+	BEQ done
+	MOVW \$k512<>(SB), R3
+	BL block<>(SB)
+done:
+	RET
+
+// block is sha512_block_data_order_neon, from its vldmia. R0 points to the
+// context, R1 to the input and R2 to its end, and R3 to K512.
+TEXT block<>(SB),NOSPLIT|NOFRAME,\$0-0
+$(words "$tmp/sha512.o" sha512_block_data_order_neon vldmia | grep -v " // vpop ")
+	RET
+EOF
+} >"$aes/../sha512/sha512block_arm.s"
