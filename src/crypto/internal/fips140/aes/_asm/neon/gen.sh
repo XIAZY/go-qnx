@@ -137,9 +137,10 @@ as "$tmp/bsaes.S" "$tmp/bsaes.o"
 // # ====================================================================
 //
 // Go's assembler has no NEON instructions, so they are given as words.
-// Of the module, only _bsaes_key_convert and _bsaes_encrypt8 are here,
-// which use R4-R6, R12 and Q0-Q15, and no stack. They find the module's
-// constants from their own address; here R6 is set by the caller.
+// Of the module, only _bsaes_key_convert, _bsaes_encrypt8 and
+// _bsaes_decrypt8 are here, which use R4-R6, R12 and Q0-Q15, and no stack.
+// They find the module's constants from their own address; here R6 is set
+// by the caller.
 
 #include "textflag.h"
 
@@ -189,6 +190,44 @@ $(neon 'vld1.8 {q8-q9}, [r0]!' 'vld1.8 {q10-q11}, [r0]!' \
 	'veor q3, q3, q12' 'veor q7, q7, q13' 'veor q2, q2, q14' 'veor q5, q5, q15' \
 	'vst1.8 {q0-q1}, [r1]!' 'vst1.8 {q4}, [r1]!' 'vst1.8 {q6}, [r1]!' \
 	'vst1.8 {q3}, [r1]!' 'vst1.8 {q7}, [r1]!' 'vst1.8 {q2}, [r1]!' \
+	'vst1.8 {q5}, [r1]')
+	RET
+
+// bsaesDecrypt8 is _bsaes_decrypt8 from its first veor. It decrypts the
+// eight blocks in Q0-Q7 and leaves them in Q0, Q1, Q6, Q4, Q2, Q7, Q3 and
+// Q5, in that order. R4 points to the second round key of a schedule that
+// bsaesKeyConvertNEON made from the decryption round keys, with the 0x63
+// moved from its last round key to its first, and Q9 holds the first. R5
+// holds the number of rounds, Q8 holds .LM0ISR and R6 points to .LISR. It
+// changes R4-R6 and Q8-Q15.
+TEXT bsaesDecrypt8<>(SB),NOSPLIT|NOFRAME,\$0-0
+$(words "$tmp/bsaes.o" _bsaes_decrypt8 veor)
+	RET
+
+// func cbcDecrypt8NEON(bs *byte, rounds int, dst, src *[128]byte, iv *[16]byte)
+//
+// It is .Lcbc_dec_loop of the module's bsaes_cbc_encrypt, once around.
+TEXT ·cbcDecrypt8NEON(SB),NOSPLIT,\$0-20
+	MOVW bs+0(FP), R4
+	MOVW rounds+4(FP), R5
+	MOVW src+12(FP), R0
+	MOVW \$bsaesConst<>+0(SB), R6 // .LM0ISR
+$(neon 'vld1.8 {q0-q1}, [r0]!' 'vld1.8 {q2-q3}, [r0]!' \
+	'vld1.8 {q4-q5}, [r0]!' 'vld1.8 {q6-q7}, [r0]' \
+	'vldmia r4!, {q9}' 'vldmia r6!, {q8}')
+	BL bsaesDecrypt8<>(SB)
+	MOVW src+12(FP), R0
+	MOVW dst+8(FP), R1
+	MOVW iv+16(FP), R2
+	// All of src is read before any of dst is written, so they may be
+	// the same memory.
+$(neon 'vld1.8 {q14}, [r2]' 'vld1.8 {q8-q9}, [r0]!' 'veor q0, q0, q14' \
+	'vld1.8 {q10-q11}, [r0]!' 'veor q1, q1, q8' 'veor q6, q6, q9' \
+	'vld1.8 {q12-q13}, [r0]!' 'veor q4, q4, q10' 'veor q2, q2, q11' \
+	'vld1.8 {q14-q15}, [r0]' 'veor q7, q7, q12' 'veor q3, q3, q13' \
+	'veor q5, q5, q14' 'vst1.8 {q15}, [r2]' \
+	'vst1.8 {q0-q1}, [r1]!' 'vst1.8 {q6}, [r1]!' 'vst1.8 {q4}, [r1]!' \
+	'vst1.8 {q2}, [r1]!' 'vst1.8 {q7}, [r1]!' 'vst1.8 {q3}, [r1]!' \
 	'vst1.8 {q5}, [r1]')
 	RET
 EOF

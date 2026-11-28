@@ -19,9 +19,10 @@
 // # ====================================================================
 //
 // Go's assembler has no NEON instructions, so they are given as words.
-// Of the module, only _bsaes_key_convert and _bsaes_encrypt8 are here,
-// which use R4-R6, R12 and Q0-Q15, and no stack. They find the module's
-// constants from their own address; here R6 is set by the caller.
+// Of the module, only _bsaes_key_convert, _bsaes_encrypt8 and
+// _bsaes_decrypt8 are here, which use R4-R6, R12 and Q0-Q15, and no stack.
+// They find the module's constants from their own address; here R6 is set
+// by the caller.
 
 #include "textflag.h"
 
@@ -559,5 +560,490 @@ TEXT ·xorKeyStream8NEON(SB),NOSPLIT,$0-20
 	WORD $0xf4016a0d // vst1.8 {d6, d7}, [r1]!
 	WORD $0xf401ea0d // vst1.8 {d14, d15}, [r1]!
 	WORD $0xf4014a0d // vst1.8 {d4, d5}, [r1]!
+	WORD $0xf401aa0f // vst1.8 {d10, d11}, [r1]
+	RET
+
+// bsaesDecrypt8 is _bsaes_decrypt8 from its first veor. It decrypts the
+// eight blocks in Q0-Q7 and leaves them in Q0, Q1, Q6, Q4, Q2, Q7, Q3 and
+// Q5, in that order. R4 points to the second round key of a schedule that
+// bsaesKeyConvertNEON made from the decryption round keys, with the 0x63
+// moved from its last round key to its first, and Q9 holds the first. R5
+// holds the number of rounds, Q8 holds .LM0ISR and R6 points to .LISR. It
+// changes R4-R6 and Q8-Q15.
+TEXT bsaesDecrypt8<>(SB),NOSPLIT|NOFRAME,$0-0
+	WORD $0xf3404172 // veor q10, q0, q9
+	WORD $0xf3426172 // veor q11, q1, q9
+	WORD $0xf3b409a0 // vtbl.8 d0, {d20, d21}, d16
+	WORD $0xf3b419a1 // vtbl.8 d1, {d20, d21}, d17
+	WORD $0xf3448172 // veor q12, q2, q9
+	WORD $0xf3b629a0 // vtbl.8 d2, {d22, d23}, d16
+	WORD $0xf3b639a1 // vtbl.8 d3, {d22, d23}, d17
+	WORD $0xf346a172 // veor q13, q3, q9
+	WORD $0xf3b849a0 // vtbl.8 d4, {d24, d25}, d16
+	WORD $0xf3b859a1 // vtbl.8 d5, {d24, d25}, d17
+	WORD $0xf348c172 // veor q14, q4, q9
+	WORD $0xf3ba69a0 // vtbl.8 d6, {d26, d27}, d16
+	WORD $0xf3ba79a1 // vtbl.8 d7, {d26, d27}, d17
+	WORD $0xf34ae172 // veor q15, q5, q9
+	WORD $0xf3bc89a0 // vtbl.8 d8, {d28, d29}, d16
+	WORD $0xf3bc99a1 // vtbl.8 d9, {d28, d29}, d17
+	WORD $0xf34c4172 // veor q10, q6, q9
+	WORD $0xf3bea9a0 // vtbl.8 d10, {d30, d31}, d16
+	WORD $0xf3beb9a1 // vtbl.8 d11, {d30, d31}, d17
+	WORD $0xf34e6172 // veor q11, q7, q9
+	WORD $0xf3b4c9a0 // vtbl.8 d12, {d20, d21}, d16
+	WORD $0xf3b4d9a1 // vtbl.8 d13, {d20, d21}, d17
+	WORD $0xf3b6e9a0 // vtbl.8 d14, {d22, d23}, d16
+	WORD $0xf3b6f9a1 // vtbl.8 d15, {d22, d23}, d17
+	WORD $0xf2c50e55 // vmov.i8 q8, #0x55
+	WORD $0xf2c32e53 // vmov.i8 q9, #0x33
+	WORD $0xf3ff40dc // vshr.u64 q10, q6, #0x1
+	WORD $0xf3ff60d8 // vshr.u64 q11, q4, #0x1
+	WORD $0xf34441de // veor q10, q10, q7
+	WORD $0xf34661da // veor q11, q11, q5
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf30ee174 // veor q7, q7, q10
+	WORD $0xf2c145f4 // vshl.i64 q10, q10, #0x1
+	WORD $0xf30aa176 // veor q5, q5, q11
+	WORD $0xf2c165f6 // vshl.i64 q11, q11, #0x1
+	WORD $0xf30cc174 // veor q6, q6, q10
+	WORD $0xf3088176 // veor q4, q4, q11
+	WORD $0xf3ff40d4 // vshr.u64 q10, q2, #0x1
+	WORD $0xf3ff60d0 // vshr.u64 q11, q0, #0x1
+	WORD $0xf34441d6 // veor q10, q10, q3
+	WORD $0xf34661d2 // veor q11, q11, q1
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf3066174 // veor q3, q3, q10
+	WORD $0xf2c145f4 // vshl.i64 q10, q10, #0x1
+	WORD $0xf3022176 // veor q1, q1, q11
+	WORD $0xf2c165f6 // vshl.i64 q11, q11, #0x1
+	WORD $0xf3044174 // veor q2, q2, q10
+	WORD $0xf3000176 // veor q0, q0, q11
+	WORD $0xf2c00e5f // vmov.i8 q8, #0xf
+	WORD $0xf3fe40da // vshr.u64 q10, q5, #0x2
+	WORD $0xf3fe60d8 // vshr.u64 q11, q4, #0x2
+	WORD $0xf34441de // veor q10, q10, q7
+	WORD $0xf34661dc // veor q11, q11, q6
+	WORD $0xf24441f2 // vand q10, q10, q9
+	WORD $0xf24661f2 // vand q11, q11, q9
+	WORD $0xf30ee174 // veor q7, q7, q10
+	WORD $0xf2c245f4 // vshl.i64 q10, q10, #0x2
+	WORD $0xf30cc176 // veor q6, q6, q11
+	WORD $0xf2c265f6 // vshl.i64 q11, q11, #0x2
+	WORD $0xf30aa174 // veor q5, q5, q10
+	WORD $0xf3088176 // veor q4, q4, q11
+	WORD $0xf3fe40d2 // vshr.u64 q10, q1, #0x2
+	WORD $0xf3fe60d0 // vshr.u64 q11, q0, #0x2
+	WORD $0xf34441d6 // veor q10, q10, q3
+	WORD $0xf34661d4 // veor q11, q11, q2
+	WORD $0xf24441f2 // vand q10, q10, q9
+	WORD $0xf24661f2 // vand q11, q11, q9
+	WORD $0xf3066174 // veor q3, q3, q10
+	WORD $0xf2c245f4 // vshl.i64 q10, q10, #0x2
+	WORD $0xf3044176 // veor q2, q2, q11
+	WORD $0xf2c265f6 // vshl.i64 q11, q11, #0x2
+	WORD $0xf3022174 // veor q1, q1, q10
+	WORD $0xf3000176 // veor q0, q0, q11
+	WORD $0xf3fc40d6 // vshr.u64 q10, q3, #0x4
+	WORD $0xf3fc60d4 // vshr.u64 q11, q2, #0x4
+	WORD $0xf34441de // veor q10, q10, q7
+	WORD $0xf34661dc // veor q11, q11, q6
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf30ee174 // veor q7, q7, q10
+	WORD $0xf2c445f4 // vshl.i64 q10, q10, #0x4
+	WORD $0xf30cc176 // veor q6, q6, q11
+	WORD $0xf2c465f6 // vshl.i64 q11, q11, #0x4
+	WORD $0xf3066174 // veor q3, q3, q10
+	WORD $0xf3044176 // veor q2, q2, q11
+	WORD $0xf3fc40d2 // vshr.u64 q10, q1, #0x4
+	WORD $0xf3fc60d0 // vshr.u64 q11, q0, #0x4
+	WORD $0xf34441da // veor q10, q10, q5
+	WORD $0xf34661d8 // veor q11, q11, q4
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf30aa174 // veor q5, q5, q10
+	WORD $0xf2c445f4 // vshl.i64 q10, q10, #0x4
+	WORD $0xf3088176 // veor q4, q4, q11
+	WORD $0xf2c465f6 // vshl.i64 q11, q11, #0x4
+	WORD $0xf3022174 // veor q1, q1, q10
+	WORD $0xf3000176 // veor q0, q0, q11
+	WORD $0xe2455001 // sub r5, r5, #1
+	WORD $0xea00001f // b <_bsaes_decrypt8+0x224>
+	WORD $0xe320f000 // nop
+	WORD $0xe320f000 // nop
+	WORD $0xe320f000 // nop
+	WORD $0xecf40b10 // vldmia r4!, {d16, d17, d18, d19, d20, d21, d22, d23}
+	WORD $0xf34001d0 // veor q8, q8, q0
+	WORD $0xf34221d2 // veor q9, q9, q1
+	WORD $0xf3b009a8 // vtbl.8 d0, {d16, d17}, d24
+	WORD $0xf3b019a9 // vtbl.8 d1, {d16, d17}, d25
+	WORD $0xecf40b04 // vldmia r4!, {d16, d17}
+	WORD $0xf34441d4 // veor q10, q10, q2
+	WORD $0xf3b229a8 // vtbl.8 d2, {d18, d19}, d24
+	WORD $0xf3b239a9 // vtbl.8 d3, {d18, d19}, d25
+	WORD $0xecf42b04 // vldmia r4!, {d18, d19}
+	WORD $0xf34661d6 // veor q11, q11, q3
+	WORD $0xf3b449a8 // vtbl.8 d4, {d20, d21}, d24
+	WORD $0xf3b459a9 // vtbl.8 d5, {d20, d21}, d25
+	WORD $0xecf44b04 // vldmia r4!, {d20, d21}
+	WORD $0xf3b669a8 // vtbl.8 d6, {d22, d23}, d24
+	WORD $0xf3b679a9 // vtbl.8 d7, {d22, d23}, d25
+	WORD $0xecf46b04 // vldmia r4!, {d22, d23}
+	WORD $0xf34001d8 // veor q8, q8, q4
+	WORD $0xf34221da // veor q9, q9, q5
+	WORD $0xf3b089a8 // vtbl.8 d8, {d16, d17}, d24
+	WORD $0xf3b099a9 // vtbl.8 d9, {d16, d17}, d25
+	WORD $0xf34441dc // veor q10, q10, q6
+	WORD $0xf3b2a9a8 // vtbl.8 d10, {d18, d19}, d24
+	WORD $0xf3b2b9a9 // vtbl.8 d11, {d18, d19}, d25
+	WORD $0xf34661de // veor q11, q11, q7
+	WORD $0xf3b4c9a8 // vtbl.8 d12, {d20, d21}, d24
+	WORD $0xf3b4d9a9 // vtbl.8 d13, {d20, d21}, d25
+	WORD $0xf3b6e9a8 // vtbl.8 d14, {d22, d23}, d24
+	WORD $0xf3b6f9a9 // vtbl.8 d15, {d22, d23}, d25
+	WORD $0xf3022158 // veor q1, q1, q4
+	WORD $0xf3066158 // veor q3, q3, q4
+	WORD $0xf308815e // veor q4, q4, q7
+	WORD $0xf302215c // veor q1, q1, q6
+	WORD $0xf304415e // veor q2, q2, q7
+	WORD $0xf30cc158 // veor q6, q6, q4
+	WORD $0xf3000152 // veor q0, q0, q1
+	WORD $0xf304415a // veor q2, q2, q5
+	WORD $0xf30ee15c // veor q7, q7, q6
+	WORD $0xf3066150 // veor q3, q3, q0
+	WORD $0xf30aa150 // veor q5, q5, q0
+	WORD $0xf3022156 // veor q1, q1, q3
+	WORD $0xf3466150 // veor q11, q3, q0
+	WORD $0xf34e4158 // veor q10, q7, q4
+	WORD $0xf342215c // veor q9, q1, q6
+	WORD $0xf348a150 // veor q13, q4, q0
+	WORD $0xf26401f4 // vorr q8, q10, q10
+	WORD $0xf34a8154 // veor q12, q5, q2
+	WORD $0xf26441f2 // vorr q10, q10, q9
+	WORD $0xf346e1f0 // veor q15, q11, q8
+	WORD $0xf246c1f8 // vand q14, q11, q12
+	WORD $0xf26661f8 // vorr q11, q11, q12
+	WORD $0xf34881f2 // veor q12, q12, q9
+	WORD $0xf24001f2 // vand q8, q8, q9
+	WORD $0xf34c2154 // veor q9, q6, q2
+	WORD $0xf24ee1f8 // vand q15, q15, q12
+	WORD $0xf24aa1f2 // vand q13, q13, q9
+	WORD $0xf346215e // veor q9, q3, q7
+	WORD $0xf342815a // veor q12, q1, q5
+	WORD $0xf34661fa // veor q11, q11, q13
+	WORD $0xf34441fa // veor q10, q10, q13
+	WORD $0xf242a1f8 // vand q13, q9, q12
+	WORD $0xf26221f8 // vorr q9, q9, q12
+	WORD $0xf34661fe // veor q11, q11, q15
+	WORD $0xf34001fa // veor q8, q8, q13
+	WORD $0xf34441fc // veor q10, q10, q14
+	WORD $0xf34221fe // veor q9, q9, q15
+	WORD $0xf34001fc // veor q8, q8, q14
+	WORD $0xf248815c // vand q12, q4, q6
+	WORD $0xf34221fc // veor q9, q9, q14
+	WORD $0xf240a154 // vand q13, q0, q2
+	WORD $0xf24ec152 // vand q14, q7, q1
+	WORD $0xf266e15a // vorr q15, q3, q5
+	WORD $0xf34661f8 // veor q11, q11, q12
+	WORD $0xf34221fc // veor q9, q9, q14
+	WORD $0xf34001fe // veor q8, q8, q15
+	WORD $0xf34441fa // veor q10, q10, q13
+	WORD $0xf246c1f2 // vand q14, q11, q9
+	WORD $0xf26081f0 // vorr q12, q8, q8
+	WORD $0xf344a1fc // veor q13, q10, q14
+	WORD $0xf340e1fc // veor q15, q8, q14
+	WORD $0xf340c1fc // veor q14, q8, q14
+	WORD $0xf352a1f0 // vbsl q13, q9, q8
+	WORD $0xf356e1f4 // vbsl q15, q11, q10
+	WORD $0xf34661f4 // veor q11, q11, q10
+	WORD $0xf35a81fc // vbsl q12, q13, q14
+	WORD $0xf35c01fa // vbsl q8, q14, q13
+	WORD $0xf248c1fe // vand q14, q12, q15
+	WORD $0xf34221f0 // veor q9, q9, q8
+	WORD $0xf34cc1f6 // veor q14, q14, q11
+	WORD $0xf34a8154 // veor q12, q5, q2
+	WORD $0xf342015c // veor q8, q1, q6
+	WORD $0xf34e41fc // veor q10, q15, q14
+	WORD $0xf24441da // vand q10, q10, q5
+	WORD $0xf30aa152 // veor q5, q5, q1
+	WORD $0xf242617e // vand q11, q1, q15
+	WORD $0xf20aa17c // vand q5, q5, q14
+	WORD $0xf30621f4 // veor q1, q11, q10
+	WORD $0xf30aa176 // veor q5, q5, q11
+	WORD $0xf34ee1fa // veor q15, q15, q13
+	WORD $0xf34cc1f2 // veor q14, q14, q9
+	WORD $0xf34e61fc // veor q11, q15, q14
+	WORD $0xf34a41f2 // veor q10, q13, q9
+	WORD $0xf24661f8 // vand q11, q11, q12
+	WORD $0xf24441d4 // vand q10, q10, q2
+	WORD $0xf34881f0 // veor q12, q12, q8
+	WORD $0xf304415c // veor q2, q2, q6
+	WORD $0xf24001fe // vand q8, q8, q15
+	WORD $0xf20cc17a // vand q6, q6, q13
+	WORD $0xf24881fc // vand q12, q12, q14
+	WORD $0xf2044172 // vand q2, q2, q9
+	WORD $0xf34001f8 // veor q8, q8, q12
+	WORD $0xf304415c // veor q2, q2, q6
+	WORD $0xf34881f6 // veor q12, q12, q11
+	WORD $0xf30cc174 // veor q6, q6, q10
+	WORD $0xf30aa178 // veor q5, q5, q12
+	WORD $0xf3044178 // veor q2, q2, q12
+	WORD $0xf3022170 // veor q1, q1, q8
+	WORD $0xf30cc170 // veor q6, q6, q8
+	WORD $0xf3468150 // veor q12, q3, q0
+	WORD $0xf34e0158 // veor q8, q7, q4
+	WORD $0xf34e61fc // veor q11, q15, q14
+	WORD $0xf34a41f2 // veor q10, q13, q9
+	WORD $0xf24661f8 // vand q11, q11, q12
+	WORD $0xf24441d0 // vand q10, q10, q0
+	WORD $0xf34881f0 // veor q12, q12, q8
+	WORD $0xf3000158 // veor q0, q0, q4
+	WORD $0xf24001fe // vand q8, q8, q15
+	WORD $0xf208817a // vand q4, q4, q13
+	WORD $0xf24881fc // vand q12, q12, q14
+	WORD $0xf2000172 // vand q0, q0, q9
+	WORD $0xf34001f8 // veor q8, q8, q12
+	WORD $0xf3000158 // veor q0, q0, q4
+	WORD $0xf34881f6 // veor q12, q12, q11
+	WORD $0xf3088174 // veor q4, q4, q10
+	WORD $0xf34ee1fa // veor q15, q15, q13
+	WORD $0xf34cc1f2 // veor q14, q14, q9
+	WORD $0xf34e41fc // veor q10, q15, q14
+	WORD $0xf24441d6 // vand q10, q10, q3
+	WORD $0xf306615e // veor q3, q3, q7
+	WORD $0xf24e617e // vand q11, q7, q15
+	WORD $0xf206617c // vand q3, q3, q14
+	WORD $0xf306e1f4 // veor q7, q11, q10
+	WORD $0xf3066176 // veor q3, q3, q11
+	WORD $0xf3066178 // veor q3, q3, q12
+	WORD $0xf3000178 // veor q0, q0, q12
+	WORD $0xf30ee170 // veor q7, q7, q8
+	WORD $0xf3088170 // veor q4, q4, q8
+	WORD $0xf302215e // veor q1, q1, q7
+	WORD $0xf30cc15a // veor q6, q6, q5
+	WORD $0xf3088152 // veor q4, q4, q1
+	WORD $0xf304415e // veor q2, q2, q7
+	WORD $0xf30aa15e // veor q5, q5, q7
+	WORD $0xf3088154 // veor q4, q4, q2
+	WORD $0xf30ee150 // veor q7, q7, q0
+	WORD $0xf308815a // veor q4, q4, q5
+	WORD $0xf306615c // veor q3, q3, q6
+	WORD $0xf30cc152 // veor q6, q6, q1
+	WORD $0xf3066158 // veor q3, q3, q4
+	WORD $0xf3088150 // veor q4, q4, q0
+	WORD $0xf30ee156 // veor q7, q7, q3
+	WORD $0xe2555001 // subs r5, r5, #1
+	WORD $0x3a000051 // blo <_bsaes_decrypt8+0x580>
+	WORD $0xf2f00840 // vext.64 q8, q0, q0, #0x1
+	WORD $0xf2f6c846 // vext.64 q14, q3, q3, #0x1
+	WORD $0xf2fae84a // vext.64 q15, q5, q5, #0x1
+	WORD $0xf34001d0 // veor q8, q8, q0
+	WORD $0xf2f22842 // vext.64 q9, q1, q1, #0x1
+	WORD $0xf34cc1d6 // veor q14, q14, q3
+	WORD $0xf2fc484c // vext.64 q10, q6, q6, #0x1
+	WORD $0xf34ee1da // veor q15, q15, q5
+	WORD $0xf2f86848 // vext.64 q11, q4, q4, #0x1
+	WORD $0xf34221d2 // veor q9, q9, q1
+	WORD $0xf2f48844 // vext.64 q12, q2, q2, #0x1
+	WORD $0xf34441dc // veor q10, q10, q6
+	WORD $0xf2fea84e // vext.64 q13, q7, q7, #0x1
+	WORD $0xf34661d8 // veor q11, q11, q4
+	WORD $0xf34881d4 // veor q12, q12, q2
+	WORD $0xf34aa1de // veor q13, q13, q7
+	WORD $0xf300017c // veor q0, q0, q14
+	WORD $0xf302217c // veor q1, q1, q14
+	WORD $0xf30cc170 // veor q6, q6, q8
+	WORD $0xf3044174 // veor q2, q2, q10
+	WORD $0xf3088172 // veor q4, q4, q9
+	WORD $0xf302217e // veor q1, q1, q15
+	WORD $0xf30cc17e // veor q6, q6, q15
+	WORD $0xf304417c // veor q2, q2, q14
+	WORD $0xf30ee176 // veor q7, q7, q11
+	WORD $0xf308817c // veor q4, q4, q14
+	WORD $0xf3066178 // veor q3, q3, q12
+	WORD $0xf304417e // veor q2, q2, q15
+	WORD $0xf30ee17e // veor q7, q7, q15
+	WORD $0xf30aa17a // veor q5, q5, q13
+	WORD $0xf2f00c40 // vext.32 q8, q0, q0, #0x3
+	WORD $0xf2f22c42 // vext.32 q9, q1, q1, #0x3
+	WORD $0xf3000170 // veor q0, q0, q8
+	WORD $0xf2fc4c4c // vext.32 q10, q6, q6, #0x3
+	WORD $0xf3022172 // veor q1, q1, q9
+	WORD $0xf2f86c48 // vext.32 q11, q4, q4, #0x3
+	WORD $0xf30cc174 // veor q6, q6, q10
+	WORD $0xf2f48c44 // vext.32 q12, q2, q2, #0x3
+	WORD $0xf3088176 // veor q4, q4, q11
+	WORD $0xf2feac4e // vext.32 q13, q7, q7, #0x3
+	WORD $0xf3044178 // veor q2, q2, q12
+	WORD $0xf2f6cc46 // vext.32 q14, q3, q3, #0x3
+	WORD $0xf30ee17a // veor q7, q7, q13
+	WORD $0xf2faec4a // vext.32 q15, q5, q5, #0x3
+	WORD $0xf306617c // veor q3, q3, q14
+	WORD $0xf34221d0 // veor q9, q9, q0
+	WORD $0xf30aa17e // veor q5, q5, q15
+	WORD $0xf2b00840 // vext.64 q0, q0, q0, #0x1
+	WORD $0xf34441d2 // veor q10, q10, q1
+	WORD $0xf34001da // veor q8, q8, q5
+	WORD $0xf34221da // veor q9, q9, q5
+	WORD $0xf2b22842 // vext.64 q1, q1, q1, #0x1
+	WORD $0xf34aa1d4 // veor q13, q13, q2
+	WORD $0xf3000170 // veor q0, q0, q8
+	WORD $0xf34cc1de // veor q14, q14, q7
+	WORD $0xf3022172 // veor q1, q1, q9
+	WORD $0xf2f40844 // vext.64 q8, q2, q2, #0x1
+	WORD $0xf34881d8 // veor q12, q12, q4
+	WORD $0xf2fe284e // vext.64 q9, q7, q7, #0x1
+	WORD $0xf34ee1d6 // veor q15, q15, q3
+	WORD $0xf2b84848 // vext.64 q2, q4, q4, #0x1
+	WORD $0xf34661dc // veor q11, q11, q6
+	WORD $0xf2bae84a // vext.64 q7, q5, q5, #0x1
+	WORD $0xf34881da // veor q12, q12, q5
+	WORD $0xf2b68846 // vext.64 q4, q3, q3, #0x1
+	WORD $0xf34661da // veor q11, q11, q5
+	WORD $0xf2bc684c // vext.64 q3, q6, q6, #0x1
+	WORD $0xf302a1fa // veor q5, q9, q13
+	WORD $0xf34661d4 // veor q11, q11, q2
+	WORD $0xf30ee17e // veor q7, q7, q15
+	WORD $0xf308c17c // veor q6, q4, q14
+	WORD $0xf30081f8 // veor q4, q8, q12
+	WORD $0xf3064174 // veor q2, q3, q10
+	WORD $0xf22661f6 // vorr q3, q11, q11
+	WORD $0xecd68b04 // vldmia r6, {d24, d25}
+	WORD $0x02866010 // addeq r6, r6, #16
+	WORD $0x1affff10 // bne <_bsaes_decrypt8+0x1b0>
+	WORD $0xecd68b04 // vldmia r6, {d24, d25}
+	WORD $0xeaffff0e // b <_bsaes_decrypt8+0x1b0>
+	WORD $0xe320f000 // nop
+	WORD $0xe320f000 // nop
+	WORD $0xe320f000 // nop
+	WORD $0xf2c50e55 // vmov.i8 q8, #0x55
+	WORD $0xf2c32e53 // vmov.i8 q9, #0x33
+	WORD $0xf3ff40d6 // vshr.u64 q10, q3, #0x1
+	WORD $0xf3ff60d4 // vshr.u64 q11, q2, #0x1
+	WORD $0xf34441da // veor q10, q10, q5
+	WORD $0xf34661de // veor q11, q11, q7
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf30aa174 // veor q5, q5, q10
+	WORD $0xf2c145f4 // vshl.i64 q10, q10, #0x1
+	WORD $0xf30ee176 // veor q7, q7, q11
+	WORD $0xf2c165f6 // vshl.i64 q11, q11, #0x1
+	WORD $0xf3066174 // veor q3, q3, q10
+	WORD $0xf3044176 // veor q2, q2, q11
+	WORD $0xf3ff40dc // vshr.u64 q10, q6, #0x1
+	WORD $0xf3ff60d0 // vshr.u64 q11, q0, #0x1
+	WORD $0xf34441d8 // veor q10, q10, q4
+	WORD $0xf34661d2 // veor q11, q11, q1
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf3088174 // veor q4, q4, q10
+	WORD $0xf2c145f4 // vshl.i64 q10, q10, #0x1
+	WORD $0xf3022176 // veor q1, q1, q11
+	WORD $0xf2c165f6 // vshl.i64 q11, q11, #0x1
+	WORD $0xf30cc174 // veor q6, q6, q10
+	WORD $0xf3000176 // veor q0, q0, q11
+	WORD $0xf2c00e5f // vmov.i8 q8, #0xf
+	WORD $0xf3fe40de // vshr.u64 q10, q7, #0x2
+	WORD $0xf3fe60d4 // vshr.u64 q11, q2, #0x2
+	WORD $0xf34441da // veor q10, q10, q5
+	WORD $0xf34661d6 // veor q11, q11, q3
+	WORD $0xf24441f2 // vand q10, q10, q9
+	WORD $0xf24661f2 // vand q11, q11, q9
+	WORD $0xf30aa174 // veor q5, q5, q10
+	WORD $0xf2c245f4 // vshl.i64 q10, q10, #0x2
+	WORD $0xf3066176 // veor q3, q3, q11
+	WORD $0xf2c265f6 // vshl.i64 q11, q11, #0x2
+	WORD $0xf30ee174 // veor q7, q7, q10
+	WORD $0xf3044176 // veor q2, q2, q11
+	WORD $0xf3fe40d2 // vshr.u64 q10, q1, #0x2
+	WORD $0xf3fe60d0 // vshr.u64 q11, q0, #0x2
+	WORD $0xf34441d8 // veor q10, q10, q4
+	WORD $0xf34661dc // veor q11, q11, q6
+	WORD $0xf24441f2 // vand q10, q10, q9
+	WORD $0xf24661f2 // vand q11, q11, q9
+	WORD $0xf3088174 // veor q4, q4, q10
+	WORD $0xf2c245f4 // vshl.i64 q10, q10, #0x2
+	WORD $0xf30cc176 // veor q6, q6, q11
+	WORD $0xf2c265f6 // vshl.i64 q11, q11, #0x2
+	WORD $0xf3022174 // veor q1, q1, q10
+	WORD $0xf3000176 // veor q0, q0, q11
+	WORD $0xf3fc40d8 // vshr.u64 q10, q4, #0x4
+	WORD $0xf3fc60dc // vshr.u64 q11, q6, #0x4
+	WORD $0xf34441da // veor q10, q10, q5
+	WORD $0xf34661d6 // veor q11, q11, q3
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf30aa174 // veor q5, q5, q10
+	WORD $0xf2c445f4 // vshl.i64 q10, q10, #0x4
+	WORD $0xf3066176 // veor q3, q3, q11
+	WORD $0xf2c465f6 // vshl.i64 q11, q11, #0x4
+	WORD $0xf3088174 // veor q4, q4, q10
+	WORD $0xf30cc176 // veor q6, q6, q11
+	WORD $0xf3fc40d2 // vshr.u64 q10, q1, #0x4
+	WORD $0xf3fc60d0 // vshr.u64 q11, q0, #0x4
+	WORD $0xf34441de // veor q10, q10, q7
+	WORD $0xf34661d4 // veor q11, q11, q2
+	WORD $0xf24441f0 // vand q10, q10, q8
+	WORD $0xf24661f0 // vand q11, q11, q8
+	WORD $0xf30ee174 // veor q7, q7, q10
+	WORD $0xf2c445f4 // vshl.i64 q10, q10, #0x4
+	WORD $0xf3044176 // veor q2, q2, q11
+	WORD $0xf2c465f6 // vshl.i64 q11, q11, #0x4
+	WORD $0xf3022174 // veor q1, q1, q10
+	WORD $0xf3000176 // veor q0, q0, q11
+	WORD $0xecd40b04 // vldmia r4, {d16, d17}
+	WORD $0xf30cc170 // veor q6, q6, q8
+	WORD $0xf3088170 // veor q4, q4, q8
+	WORD $0xf3044170 // veor q2, q2, q8
+	WORD $0xf30ee170 // veor q7, q7, q8
+	WORD $0xf3066170 // veor q3, q3, q8
+	WORD $0xf30aa170 // veor q5, q5, q8
+	WORD $0xf3000170 // veor q0, q0, q8
+	WORD $0xf3022170 // veor q1, q1, q8
+	RET
+
+// func cbcDecrypt8NEON(bs *byte, rounds int, dst, src *[128]byte, iv *[16]byte)
+//
+// It is .Lcbc_dec_loop of the module's bsaes_cbc_encrypt, once around.
+TEXT ·cbcDecrypt8NEON(SB),NOSPLIT,$0-20
+	MOVW bs+0(FP), R4
+	MOVW rounds+4(FP), R5
+	MOVW src+12(FP), R0
+	MOVW $bsaesConst<>+0(SB), R6 // .LM0ISR
+	WORD $0xf420020d // vld1.8 {d0, d1, d2, d3}, [r0]!
+	WORD $0xf420420d // vld1.8 {d4, d5, d6, d7}, [r0]!
+	WORD $0xf420820d // vld1.8 {d8, d9, d10, d11}, [r0]!
+	WORD $0xf420c20f // vld1.8 {d12, d13, d14, d15}, [r0]
+	WORD $0xecf42b04 // vldmia r4!, {d18, d19}
+	WORD $0xecf60b04 // vldmia r6!, {d16, d17}
+	BL bsaesDecrypt8<>(SB)
+	MOVW src+12(FP), R0
+	MOVW dst+8(FP), R1
+	MOVW iv+16(FP), R2
+	// All of src is read before any of dst is written, so they may be
+	// the same memory.
+	WORD $0xf462ca0f // vld1.8 {d28, d29}, [r2]
+	WORD $0xf460020d // vld1.8 {d16, d17, d18, d19}, [r0]!
+	WORD $0xf300017c // veor q0, q0, q14
+	WORD $0xf460420d // vld1.8 {d20, d21, d22, d23}, [r0]!
+	WORD $0xf3022170 // veor q1, q1, q8
+	WORD $0xf30cc172 // veor q6, q6, q9
+	WORD $0xf460820d // vld1.8 {d24, d25, d26, d27}, [r0]!
+	WORD $0xf3088174 // veor q4, q4, q10
+	WORD $0xf3044176 // veor q2, q2, q11
+	WORD $0xf460c20f // vld1.8 {d28, d29, d30, d31}, [r0]
+	WORD $0xf30ee178 // veor q7, q7, q12
+	WORD $0xf306617a // veor q3, q3, q13
+	WORD $0xf30aa17c // veor q5, q5, q14
+	WORD $0xf442ea0f // vst1.8 {d30, d31}, [r2]
+	WORD $0xf401020d // vst1.8 {d0, d1, d2, d3}, [r1]!
+	WORD $0xf401ca0d // vst1.8 {d12, d13}, [r1]!
+	WORD $0xf4018a0d // vst1.8 {d8, d9}, [r1]!
+	WORD $0xf4014a0d // vst1.8 {d4, d5}, [r1]!
+	WORD $0xf401ea0d // vst1.8 {d14, d15}, [r1]!
+	WORD $0xf4016a0d // vst1.8 {d6, d7}, [r1]!
 	WORD $0xf401aa0f // vst1.8 {d10, d11}, [r1]
 	RET
