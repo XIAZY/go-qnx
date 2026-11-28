@@ -88,6 +88,14 @@ func needZeroAfterSysUnused() bool {
 // of Prepared memory for accounting purposes.
 func sysUsed(v unsafe.Pointer, n, prepared uintptr) {
 	gcController.mappedReady.Add(int64(prepared))
+	if GOOS == "qnx" {
+		// prepared == n tells qnxSysUsed (mem_bsd.go) that every page
+		// is released: mapped lazily by sysMap or sysUnused and holding
+		// no memory. Callers on qnx must pass prepared == n only for
+		// such ranges.
+		qnxSysUsed(v, n, prepared == n)
+		return
+	}
 	sysUsedOS(v, n)
 }
 

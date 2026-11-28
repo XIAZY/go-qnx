@@ -18,6 +18,8 @@ const (
 )
 
 var (
+	ARMHasNEON = cpu.ARM.HasNEON
+
 	ARM64HasAES    = cpu.ARM64.HasAES
 	ARM64HasPMULL  = cpu.ARM64.HasPMULL
 	ARM64HasSHA2   = cpu.ARM64.HasSHA2

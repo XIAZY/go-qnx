@@ -1217,6 +1217,7 @@ func (h *mheap) allocSpan(npages uintptr, typ spanAllocType, spanclass spanClass
 	gp := getg()
 	base, scav := uintptr(0), uintptr(0)
 	growth := uintptr(0)
+	ahead := uintptr(0) // released bytes committed past the span (qnxCommitAhead)
 
 	// On some platforms we need to provide physical page aligned stack
 	// allocations. Where the page size is less than the physical page
@@ -1240,6 +1241,11 @@ func (h *mheap) allocSpan(npages uintptr, typ spanAllocType, spanclass spanClass
 		// Try to allocate from the cache.
 		base, scav = c.alloc(npages)
 		if base != 0 {
+			if GOOS == "qnx" && GOARCH == "arm" && scav == npages*pageSize {
+				// Commit some of the released pages that follow
+				// the span in the same call (see qnxCommitAhead).
+				ahead = c.takeScavengedAfter(base+npages*pageSize, qnxCommitAhead)
+			}
 			s = h.tryAllocMSpan()
 			if s != nil {
 				goto HaveSpan
@@ -1392,18 +1398,20 @@ HaveSpan:
 	if scav != 0 {
 		// sysUsed all the pages that are actually available
 		// in the span since some of them might be scavenged.
-		sysUsed(unsafe.Pointer(base), nbytes, scav)
-		gcController.heapReleased.add(-int64(scav))
+		// ahead bytes of released pages after the span, still free
+		// in the page cache, are committed with them.
+		sysUsed(unsafe.Pointer(base), nbytes+ahead, scav+ahead)
+		gcController.heapReleased.add(-int64(scav + ahead))
 	}
 	// Update stats.
-	gcController.heapFree.add(-int64(nbytes - scav))
+	gcController.heapFree.add(-int64(nbytes-scav) + int64(ahead))
 	if typ == spanAllocHeap {
 		gcController.heapInUse.add(int64(nbytes))
 	}
 	// Update consistent stats.
 	stats := memstats.heapStats.acquire()
-	atomic.Xaddint64(&stats.committed, int64(scav))
-	atomic.Xaddint64(&stats.released, -int64(scav))
+	atomic.Xaddint64(&stats.committed, int64(scav+ahead))
+	atomic.Xaddint64(&stats.released, -int64(scav+ahead))
 	switch typ {
 	case spanAllocHeap:
 		atomic.Xaddint64(&stats.inHeap, int64(nbytes))

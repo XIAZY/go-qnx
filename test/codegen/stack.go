@@ -78,7 +78,7 @@ func ArrayAdd64(a, b [4]float64) [4]float64 {
 
 // 386:"TEXT .*, [$]0-"
 // amd64:"TEXT .*, [$]0-"
-// arm:"TEXT .*, [$]0-" (spills return address)
+// arm:"TEXT .*, [$]-4-"
 // arm64:"TEXT .*, [$]0-"
 // mips:"TEXT .*, [$]-4-"
 // ppc64x:"TEXT .*, [$]0-"

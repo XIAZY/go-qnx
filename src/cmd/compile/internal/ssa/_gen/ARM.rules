@@ -271,16 +271,18 @@
 (Store {t} ptr val mem) && t.Size() == 8 &&  t.IsFloat() => (MOVDstore ptr val mem)
 
 // zero instructions
+// armAlign(t) is t's alignment, or a word on ARMv7, which reads and writes
+// words and halfwords at any address.
 (Zero [0] _ mem) => mem
 (Zero [1] ptr mem) => (MOVBstore ptr (MOVWconst [0]) mem)
-(Zero [2] {t} ptr mem) && t.Alignment()%2 == 0 =>
+(Zero [2] {t} ptr mem) && armAlign(t)%2 == 0 =>
 	(MOVHstore ptr (MOVWconst [0]) mem)
 (Zero [2] ptr mem) =>
 	(MOVBstore [1] ptr (MOVWconst [0])
 		(MOVBstore [0] ptr (MOVWconst [0]) mem))
-(Zero [4] {t} ptr mem) && t.Alignment()%4 == 0 =>
+(Zero [4] {t} ptr mem) && armAlign(t)%4 == 0 =>
 	(MOVWstore ptr (MOVWconst [0]) mem)
-(Zero [4] {t} ptr mem) && t.Alignment()%2 == 0 =>
+(Zero [4] {t} ptr mem) && armAlign(t)%2 == 0 =>
 	(MOVHstore [2] ptr (MOVWconst [0])
 		(MOVHstore [0] ptr (MOVWconst [0]) mem))
 (Zero [4] ptr mem) =>
@@ -294,33 +296,56 @@
 		(MOVBstore [1] ptr (MOVWconst [0])
 			(MOVBstore [0] ptr (MOVWconst [0]) mem)))
 
+// Up to four words are cleared in line: a duff device is a call, which
+// makes a leaf function need a frame.
+(Zero [8] {t} ptr mem) && armAlign(t)%4 == 0 =>
+	(MOVWstore [4] ptr (MOVWconst [0])
+		(MOVWstore [0] ptr (MOVWconst [0]) mem))
+(Zero [12] {t} ptr mem) && armAlign(t)%4 == 0 =>
+	(MOVWstore [8] ptr (MOVWconst [0])
+		(MOVWstore [4] ptr (MOVWconst [0])
+			(MOVWstore [0] ptr (MOVWconst [0]) mem)))
+(Zero [16] {t} ptr mem) && armAlign(t)%4 == 0 =>
+	(MOVWstore [12] ptr (MOVWconst [0])
+		(MOVWstore [8] ptr (MOVWconst [0])
+			(MOVWstore [4] ptr (MOVWconst [0])
+				(MOVWstore [0] ptr (MOVWconst [0]) mem))))
+
+// What is cleared by words but is not a whole number of them, as an array
+// of bytes may be on ARMv7, is cleared as words and then the bytes left.
+(Zero [s] {t} ptr mem)
+	&& s > 4 && s%4 != 0 && armAlign(t)%4 == 0 =>
+	(Zero [s%4] {t}
+		(OffPtr <ptr.Type> [s-s%4] ptr)
+		(Zero [s-s%4] {t} ptr mem))
+
 // Medium zeroing uses a duff device
 // 4 and 128 are magic constants, see runtime/mkduff.go
 (Zero [s] {t} ptr mem)
 	&& s%4 == 0 && s > 4 && s <= 512
-	&& t.Alignment()%4 == 0 =>
+	&& armAlign(t)%4 == 0 =>
 	(DUFFZERO [4 * (128 - s/4)] ptr (MOVWconst [0]) mem)
 
 // Large zeroing uses a loop
 (Zero [s] {t} ptr mem)
-	&& s > 512 || t.Alignment()%4 != 0 =>
-	(LoweredZero [t.Alignment()]
+	&& s > 512 || armAlign(t)%4 != 0 =>
+	(LoweredZero [armAlign(t)]
 		ptr
-		(ADDconst <ptr.Type> ptr [int32(s-moveSize(t.Alignment(), config))])
+		(ADDconst <ptr.Type> ptr [int32(s-moveSize(armAlign(t), config))])
 		(MOVWconst [0])
 		mem)
 
 // moves
 (Move [0] _ _ mem) => mem
 (Move [1] dst src mem) => (MOVBstore dst (MOVBUload src mem) mem)
-(Move [2] {t} dst src mem) && t.Alignment()%2 == 0 =>
+(Move [2] {t} dst src mem) && armAlign(t)%2 == 0 =>
 	(MOVHstore dst (MOVHUload src mem) mem)
 (Move [2] dst src mem) =>
 	(MOVBstore [1] dst (MOVBUload [1] src mem)
 		(MOVBstore dst (MOVBUload src mem) mem))
-(Move [4] {t} dst src mem) && t.Alignment()%4 == 0 =>
+(Move [4] {t} dst src mem) && armAlign(t)%4 == 0 =>
 	(MOVWstore dst (MOVWload src mem) mem)
-(Move [4] {t} dst src mem) && t.Alignment()%2 == 0 =>
+(Move [4] {t} dst src mem) && armAlign(t)%2 == 0 =>
 	(MOVHstore [2] dst (MOVHUload [2] src mem)
 		(MOVHstore dst (MOVHUload src mem) mem))
 (Move [4] dst src mem) =>
@@ -334,20 +359,42 @@
 		(MOVBstore [1] dst (MOVBUload [1] src mem)
 			(MOVBstore dst (MOVBUload src mem) mem)))
 
+// Up to four words are copied in line, as they are cleared.
+(Move [8] {t} dst src mem) && armAlign(t)%4 == 0 =>
+	(MOVWstore [4] dst (MOVWload [4] src mem)
+		(MOVWstore dst (MOVWload src mem) mem))
+(Move [12] {t} dst src mem) && armAlign(t)%4 == 0 =>
+	(MOVWstore [8] dst (MOVWload [8] src mem)
+		(MOVWstore [4] dst (MOVWload [4] src mem)
+			(MOVWstore dst (MOVWload src mem) mem)))
+(Move [16] {t} dst src mem) && armAlign(t)%4 == 0 =>
+	(MOVWstore [12] dst (MOVWload [12] src mem)
+		(MOVWstore [8] dst (MOVWload [8] src mem)
+			(MOVWstore [4] dst (MOVWload [4] src mem)
+				(MOVWstore dst (MOVWload src mem) mem))))
+
+// As for Zero: the words first, then the bytes left.
+(Move [s] {t} dst src mem)
+	&& s > 4 && s%4 != 0 && armAlign(t)%4 == 0 =>
+	(Move [s%4] {t}
+		(OffPtr <dst.Type> [s-s%4] dst)
+		(OffPtr <src.Type> [s-s%4] src)
+		(Move [s-s%4] {t} dst src mem))
+
 // Medium move uses a duff device
 // 8 and 128 are magic constants, see runtime/mkduff.go
 (Move [s] {t} dst src mem)
 	&& s%4 == 0 && s > 4 && s <= 512
-	&& t.Alignment()%4 == 0 && logLargeCopy(v, s) =>
+	&& armAlign(t)%4 == 0 && logLargeCopy(v, s) =>
 	(DUFFCOPY [8 * (128 - s/4)] dst src mem)
 
 // Large move uses a loop
 (Move [s] {t} dst src mem)
-	&& (s > 512 || t.Alignment()%4 != 0) && logLargeCopy(v, s) =>
-	(LoweredMove [t.Alignment()]
+	&& (s > 512 || armAlign(t)%4 != 0) && logLargeCopy(v, s) =>
+	(LoweredMove [armAlign(t)]
 		dst
 		src
-		(ADDconst <src.Type> src [int32(s-moveSize(t.Alignment(), config))])
+		(ADDconst <src.Type> src [int32(s-moveSize(armAlign(t), config))])
 		mem)
 
 // calls

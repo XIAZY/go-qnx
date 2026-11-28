@@ -794,6 +794,14 @@ func (stringAux) CanBeAnSSAAux() {}
 func auxToString(i Aux) string {
 	return string(i.(stringAux))
 }
+
+type int64Aux int64
+
+func (int64Aux) CanBeAnSSAAux() {}
+
+func int64ToAux(v int64) Aux {
+	return int64Aux(v)
+}
 func auxToSym(i Aux) Sym {
 	// TODO: kind of a hack - allows nil interface through
 	s, _ := i.(Sym)
@@ -985,6 +993,18 @@ func moveSize(align int64, c *Config) int64 {
 		return 2
 	}
 	return 1
+}
+
+// armAlign returns the alignment that the code clearing or copying a value
+// of type t on arm may count on. ARMv7 reads and writes words and halfwords
+// at any address, so there it is a word whatever t is; a value of bytes is
+// then cleared or copied four at a time instead of one. Older processors
+// may trap, or do something else.
+func armAlign(t *types.Type) int64 {
+	if buildcfg.GOARM.Version >= 7 {
+		return 4
+	}
+	return t.Alignment()
 }
 
 // mergePoint finds a block among a's blocks which dominates b and is itself

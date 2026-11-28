@@ -15,6 +15,7 @@ var Platform string
 
 // HWCAP/HWCAP2 bits. These are exposed by Linux and FreeBSD.
 const (
+	hwcap_NEON  = 1 << 12
 	hwcap_VFPv4 = 1 << 16
 	hwcap_IDIVA = 1 << 17
 	hwcap_LPAE  = 1 << 20
@@ -25,11 +26,13 @@ func doinit() {
 		{Name: "vfpv4", Feature: &ARM.HasVFPv4},
 		{Name: "idiva", Feature: &ARM.HasIDIVA},
 		{Name: "v7atomics", Feature: &ARM.HasV7Atomics},
+		{Name: "neon", Feature: &ARM.HasNEON},
 	}
 
 	// HWCAP feature bits
 	ARM.HasVFPv4 = isSet(HWCap, hwcap_VFPv4)
 	ARM.HasIDIVA = isSet(HWCap, hwcap_IDIVA)
+	ARM.HasNEON = isSet(HWCap, hwcap_NEON)
 	// lpae is required to make the 64-bit instructions LDRD and STRD (and variants) atomic.
 	// See ARMv7 manual section B1.6.
 	// We also need at least a v7 chip, for the DMB instruction.

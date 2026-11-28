@@ -814,6 +814,9 @@ func (c *PageCache) Scav() uint64  { return (*pageCache)(c).scav }
 func (c *PageCache) Alloc(npages uintptr) (uintptr, uintptr) {
 	return (*pageCache)(c).alloc(npages)
 }
+func (c *PageCache) TakeScavengedAfter(addr, n uintptr) uintptr {
+	return (*pageCache)(c).takeScavengedAfter(addr, n)
+}
 func (c *PageCache) Flush(s *PageAlloc) {
 	cp := (*pageCache)(c)
 	sp := (*pageAlloc)(s)

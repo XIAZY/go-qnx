@@ -68,6 +68,7 @@ var ARM struct {
 	HasVFPv4     bool
 	HasIDIVA     bool
 	HasV7Atomics bool
+	HasNEON      bool
 	_            CacheLinePad
 }
 
